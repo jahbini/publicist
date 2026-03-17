@@ -1,4 +1,5 @@
 fs = require 'fs'
+path = require 'path'
 
 clean = (txt) ->
   s = String(txt ? '')
@@ -31,10 +32,20 @@ safe = (title) ->
       M.saveThis "done:#{stepName}", true
       return
 
-    mdEntry = M.theLowdown(inPath)
-    raw = mdEntry.value
-    raw = await mdEntry.notifier if raw is undefined
-    throw new Error "Markdown not found: #{inPath}" unless raw?
+    execDir = M.theLowdown('env/EXEC')?.value ? process.cwd()
+    cwdDir  = M.theLowdown('env/CWD')?.value ? process.cwd()
+
+    resolveInputPath = (p) ->
+      return null unless typeof p is 'string' and p.length > 0
+      return p if path.isAbsolute(p)
+      fromExec = path.resolve(execDir, p)
+      return fromExec if fs.existsSync(fromExec)
+      path.resolve(cwdDir, p)
+
+    inputPath = resolveInputPath inPath
+    throw new Error "Markdown not found: #{inPath}" unless inputPath? and fs.existsSync(inputPath)
+
+    raw = fs.readFileSync inputPath, 'utf8'
 
     unless mode in ['story', 'paragraph']
       throw new Error "Unsupported split_mode: #{mode}"

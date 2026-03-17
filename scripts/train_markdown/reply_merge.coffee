@@ -14,6 +14,7 @@ loadArray = (M, key) ->
 
     segments = await loadArray M, segKey
     replies  = await loadArray M, emoKey
+    #console.error "KAG REPLIES",replies
 
     throw new Error "#{segKey} must be an array" unless Array.isArray(segments)
     throw new Error "#{emoKey} must be an array" unless Array.isArray(replies)
@@ -25,13 +26,17 @@ loadArray = (M, key) ->
 
     lookup = Object.create null
     for reply in replies when reply?.meta?
+      console.error "JIM a reply?", reply
       lookup["#{reply.meta.doc_id}|#{reply.meta.paragraph_index}"] = reply.emotions
+
+    #console.error "JIM lookup",lookup
+    #console.error "JIM segnebts",segments
 
     merged = []
     for segment in segments
       key = "#{segment.meta?.doc_id}|#{segment.meta?.paragraph_index}"
       emotions = lookup[key]
-      continue unless emotions?
+      continue unless emotions? 
       merged.push
         meta: segment.meta
         prompt: segment.text ? segment.prompt

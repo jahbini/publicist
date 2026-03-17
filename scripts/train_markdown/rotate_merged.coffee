@@ -1,16 +1,18 @@
-loadArray = (M, key) ->
-  entry = M.theLowdown key
-  value = entry?.value
-  value = await entry.notifier if value is undefined
-  value
-
 mkPrompt = (row) ->
   """
 Continue in the same voice and mannner as the text below.
 #{row.prompt}
 """.trim()
 
+toTextExample = (row) ->
+  return null unless row?
+  return row if row.text?
+  if row.prompt? and row.completion?
+    return text: "#{row.prompt}\n\n#{row.completion}"
+  null
+
 isSequential = (a, b) ->
+  return true
   return false unless a?.meta?.doc_id? and b?.meta?.doc_id?
   return false unless a.meta.doc_id is b.meta.doc_id
   ai = parseInt(a.meta.paragraph_index, 10)
@@ -25,9 +27,17 @@ isSequential = (a, b) ->
     trainKey  = M.getStepParam stepName, 'train_file'
     validKey  = M.getStepParam stepName, 'valid_file'
 
-    mergedRows = await loadArray M, mergedKey
-    oldTrain   = await loadArray M, trainKey
-    oldValid   = await loadArray M, validKey
+    mergedEntry = M.theLowdown mergedKey
+    mergedRows = mergedEntry?.value
+    mergedRows = await mergedEntry.notifier if mergedRows is undefined
+
+    trainEntry = M.theLowdown trainKey
+    oldTrain = trainEntry?.value
+    oldTrain = [] if oldTrain is undefined
+
+    validEntry = M.theLowdown validKey
+    oldValid = validEntry?.value
+    oldValid = [] if oldValid is undefined
 
     throw new Error "#{mergedKey} must be an array" unless Array.isArray(mergedRows)
     oldTrain = [] unless Array.isArray(oldTrain)
@@ -44,9 +54,10 @@ isSequential = (a, b) ->
         continue
       continue unless current?.prompt?
       newTrain.push
-        prompt: mkPrompt(current)
-        completion: nextRow.prompt
+        text: "#{mkPrompt(current)}\n\n#{nextRow.prompt}"
 
+    oldTrain = (toTextExample(row) for row in oldTrain).filter(Boolean)
+    oldValid = (toTextExample(row) for row in oldValid).filter(Boolean)
     newValid = oldValid.concat oldTrain
     newValid = newTrain if newValid.length is 0
 

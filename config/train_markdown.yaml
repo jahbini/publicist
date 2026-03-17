@@ -47,6 +47,7 @@ rotate_merged:
   merged_segments: data/train_markdown/merged_segments.jsonl
   train_file: build/train_markdown/train.jsonl
   valid_file: build/train_markdown/valid.jsonl
+  test_file: build/train_markdown/test.jsonl
 
 lora_train:
   run: train_markdown/lora_train.coffee
@@ -59,17 +60,20 @@ lora_train:
   learning_rate: 0.00005
   train_file: build/train_markdown/train.jsonl
   valid_file: build/train_markdown/valid.jsonl
-  adapter_path: build/train_markdown/adapter
+  test_file: build/train_markdown/test.jsonl
+  adapter_path: build/adapter
+  resume_adapter_file: build/adapter/adapters.safetensors
   stdout_text: out/train_markdown/lora_train.txt
 
 talk_story:
-  run: train_markdown/talk_story.coffee
+  run: jim/polish_story.coffee
   depends_on: [lora_train]
   needs: []
   makes: []
-  adapter_path: build/train_markdown/adapter
-  prompt_text: we went to Portland and this happened
-  max_tokens: 800
-  top_p: 0.9
+  adapter_path: build/adapter
+  story_key:
+  story_fragment: we went to Portland and this happened
+  max_tokens: 2000
   temperature: 0.7
+  min_tokens: 500
   output_text: out/train_markdown/talk_story.txt

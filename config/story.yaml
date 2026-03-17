@@ -56,7 +56,9 @@ polish_story:
   depends_on: [assemble_story]
   needs: [story]
   makes: [story_polished]
+  story_key: story
   adapter_path: build/adapter
   temperature: 0.7
   max_tokens: 2000
   min_tokens: 500
+  output_text: out/story.txt

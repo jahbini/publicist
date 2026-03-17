@@ -21,9 +21,16 @@ artifacts/
 data/
 data_report.json
 eval_out/
+out/
+logs/
 run*/
 dist/
 TrainTiny/
+params/
+state/
+pipeline.json
+experiment.yaml
+override.yaml
 
 # macOS
 .DS_Store

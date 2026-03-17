@@ -10,6 +10,7 @@ Pipeline init step (HARDENED):
 • Memo is sole source of truth
 ###
 
+fs    = require 'fs'
 path  = require 'path'
 cp    = require 'child_process'
 
@@ -31,6 +32,25 @@ runSh = (cmd, cwd = null) ->
     cwd: cwd
     stdio: 'pipe'
     encoding: 'utf8'
+
+provenancePathFor = (targetDir) ->
+  path.join targetDir, '.model_provenance.json'
+
+readProvenance = (targetDir) ->
+  provPath = provenancePathFor targetDir
+  return null unless fs.existsSync provPath
+  try
+    JSON.parse fs.readFileSync(provPath, 'utf8')
+  catch
+    throw new Error "Invalid model provenance file: #{provPath}"
+
+writeProvenance = (targetDir, modelId, repoUrl) ->
+  provPath = provenancePathFor targetDir
+  payload =
+    model_id: modelId
+    repo_url: repoUrl
+    recorded_at: new Date().toISOString()
+  fs.writeFileSync provPath, JSON.stringify(payload, null, 2), 'utf8'
 
 @step =
   desc: "Initialize base HF model into loraland (git + lfs, retry-hardened)"
@@ -71,7 +91,14 @@ runSh = (cmd, cwd = null) ->
       hasWeights = out.trim().length > 0
     catch then hasWeights = false
 
+    provenance = readProvenance targetDir if present
+
     if present && hasWeights
+      unless provenance?
+        throw new Error "[init] Existing model directory has weights but no provenance: #{provenancePathFor(targetDir)}. Verify the model manually and either remove the directory or add matching provenance for #{hfModelId}."
+      if provenance.model_id isnt hfModelId
+        throw new Error "[init] Existing model directory was recorded for #{provenance.model_id}; requested #{hfModelId}. Remove #{targetDir} if you want to materialize a different base model."
+
       console.log "[init] Model already present, skipping."
       return
 
@@ -114,6 +141,8 @@ runSh = (cmd, cwd = null) ->
           hasWeights = out.trim().length > 0
         catch then hasWeights = false
         throw new Error "No model weights found" unless hasWeights
+
+        writeProvenance targetDir, hfModelId, repoUrl
 
         console.log "[init] Model successfully materialized."
         return

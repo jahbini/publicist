@@ -10,23 +10,23 @@ run:
 
 artifacts:
   input_data:
-    target: data/input.json
+    target: tested/input.json
   transformed_data:
-    target: data/transformed.json
+    target: tested/transformed.json
   summary_row:
-    target: data/table.json
+    target: tested/table.json
   wait_data:
-    target: data/wait.json
+    target: tested/wait.json
   final_summary_json:
-    target: data/final_summary.json
+    target: tested/final_summary.json
   final_summary_yaml:
-    target: data/final_summary.yaml
+    target: tested/final_summary.yaml
   final_summary_csv:
-    target: data/final_summary.csv
+    target: tested/final_summary.csv
   curl_result:
-    target: data/curl_result.json
+    target: tested/curl_result.json
   python_result:
-    target: data/python_result.json
+    target: tested/python_result.json
 
 # ------------------------------------------------------------
 # Step 1 — generate input

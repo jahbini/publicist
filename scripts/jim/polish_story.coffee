@@ -10,6 +10,7 @@ Expand the following story fragment into a short reflective narrative of at leas
 Maintain the same events and ideas, but improve flow, imagery, and voice.
 
 Rules:
+- Speak in the first person as Jim
 - Keep the same order of events.
 - Do not introduce new plot elements.
 - Add natural narration and sensory detail.
@@ -45,17 +46,26 @@ cleanGeneratedText = (prompt, rawOutput) ->
   desc: "Expand and polish story using LLM"
 
   action: (M, stepName) ->
-    storyKey = "story"
-    storyEntry = M.theLowdown storyKey
-    story = storyEntry?.value
-    if story is undefined
-      if typeof storyEntry?.waitFor is 'function'
-        story = await storyEntry.waitFor()
-      else if storyEntry?.notifier?
-        story = await storyEntry.notifier
-    throw new Error "[#{stepName}] Missing input key '#{storyKey}'" if story is undefined
+    storyKey = M.getStepParam(stepName, 'story_key')
+    storyFragment = M.getStepParam(stepName, 'story_fragment')
+    outputText = M.getStepParam(stepName, 'output_text')
 
-    baseText = story.text ? ''
+    story = null
+    baseText = ''
+
+    if storyKey?
+      storyEntry = M.theLowdown storyKey
+      story = storyEntry?.value
+      if story is undefined
+        if typeof storyEntry?.waitFor is 'function'
+          story = await storyEntry.waitFor()
+        else if storyEntry?.notifier?
+          story = await storyEntry.notifier
+      throw new Error "[#{stepName}] Missing input key '#{storyKey}'" if story is undefined
+      baseText = story.text ? ''
+    else
+      baseText = storyFragment ? ''
+      story = text: baseText
 
     prompt = buildPrompt baseText
     modelDir = M.theLowdown('modelDir')?.value
@@ -83,6 +93,6 @@ cleanGeneratedText = (prompt, rawOutput) ->
       source_story: story
 
     M.saveThis "story_polished", out
-    M.saveThis "out/story.txt", polishedText
+    M.saveThis outputText, polishedText
     M.saveThis "done:#{stepName}", true
     return

@@ -1,7 +1,7 @@
 loadArray = (M, key) ->
   entry = M.theLowdown key
   value = entry?.value
-  value = await entry.notifier if value is undefined
+  value = [] if value is undefined
   value
 
 extractJSON = (raw) ->
@@ -21,6 +21,7 @@ extractJSON = (raw) ->
     modelDir = M.theLowdown('modelDir')?.value
     segments = await loadArray M, segKey
     taggedRows = await loadArray M, emoKey
+    #console.error "JIM oracle_ask inputs",segments.length,taggedRows.length,emoKey
 
     throw new Error "#{segKey} must be an array" unless Array.isArray(segments)
     taggedRows = [] unless Array.isArray(taggedRows)
@@ -39,10 +40,8 @@ extractJSON = (raw) ->
     console.log "[oracle_ask] pending:", pending.length
 
     if pending.length is 0
-      M.saveThis "pipeline:shutdown",
-        by: stepName
-        reason: "no more untagged segments"
-        timestamp: new Date().toISOString()
+      console.error "JIM BAD EXIT"
+      M.saveThis emoKey, taggedRows
       M.saveThis "done:#{stepName}", true
       return
 
@@ -80,6 +79,7 @@ Return exactly:
 
       console.log "[oracle_ask] tagged #{meta.doc_id} #{meta.paragraph_index}"
 
+    #console.error "JIM emotion tags",emoKey,outRows
     M.saveThis emoKey, outRows
     M.saveThis "done:#{stepName}", true
     return

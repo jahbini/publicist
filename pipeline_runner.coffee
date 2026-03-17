@@ -262,8 +262,10 @@ class Memo
     res = spawnSync resolvePython(CWD), args, {encoding:'utf8'}
     console.error "MLX result" ,res if dbug
     
+    if res.error?
+      throw res.error
     if res.status isnt 0
-      console.error "MLX failed: #{res.stderr}"
+      throw new Error "MLX failed: #{res.stderr ? res.stdout ? "exit #{res.status}"}"
     res.stdout
 
 # -------------------------------------------------------------------
