@@ -49,6 +49,7 @@ cleanGeneratedText = (prompt, rawOutput) ->
     storyKey = M.getStepParam(stepName, 'story_key')
     storyFragment = M.getStepParam(stepName, 'story_fragment')
     outputText = M.getStepParam(stepName, 'output_text')
+    promptKey = M.getStepParam(stepName, 'prompt_key')
 
     story = null
     baseText = ''
@@ -67,7 +68,18 @@ cleanGeneratedText = (prompt, rawOutput) ->
       baseText = storyFragment ? ''
       story = text: baseText
 
-    prompt = buildPrompt baseText
+    prompt = null
+    if promptKey?
+      promptEntry = M.theLowdown promptKey
+      prompt = promptEntry?.value
+      if prompt is undefined
+        if typeof promptEntry?.waitFor is 'function'
+          prompt = await promptEntry.waitFor()
+        else if promptEntry?.notifier?
+          prompt = await promptEntry.notifier
+      throw new Error "[#{stepName}] Missing input key '#{promptKey}'" if prompt is undefined
+    else
+      prompt = buildPrompt baseText
     modelDir = M.theLowdown('modelDir')?.value
     throw new Error "[#{stepName}] Missing modelDir in memo" unless modelDir?
 
