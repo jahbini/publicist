@@ -10,7 +10,13 @@ clean = (txt) ->
   s = s.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
   s = s.replace(/[_*]{1,3}([^*_]+)[_*]{1,3}/g, '$1')
   s = s.replace(/ {2,}/g, ' ')
-  s.trim()
+  lines = s.split /\r?\n/
+  while lines.length
+    line = String(lines[lines.length - 1] ? '').trim()
+    break unless /^:\s*https?:\/\/\S+\s*$/.test(line) or /^https?:\/\/\S+\s*$/.test(line)
+    lines.pop()
+  s = lines.join("\n").trim()
+  s
 
 safe = (title) ->
   String(title ? '')
@@ -78,13 +84,15 @@ safe = (title) ->
             doc_id: safe(story.title)
             paragraph_index: '001'
             title: story.title
-          text: story.text
+          text: "#{story.text}\n\n<stop>"
     else
       for story in stories
         baseId = safe story.title
         paragraphs = story.text.split(/\n/)
           .map(clean)
           .filter (p) -> p.length
+        if paragraphs.length
+          paragraphs[paragraphs.length - 1] = "#{paragraphs[paragraphs.length - 1]}\n\n<stop>"
         index = 1
         for paragraph in paragraphs
           rows.push

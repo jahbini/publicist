@@ -1,6 +1,3 @@
-fs = require 'fs'
-path = require 'path'
-
 @step =
   desc: "Build MLX training data from newly identified full stories"
 
@@ -46,10 +43,9 @@ path = require 'path'
       grouped[title] ?= []
       grouped[title].push segment
 
-    fs.mkdirSync path.dirname(trainFile), { recursive: true }
-
     storiesProcessed = 0
     rowsWritten = 0
+    rows = []
 
     for own title, segments of grouped
       continue unless Array.isArray(segments)
@@ -77,14 +73,15 @@ path = require 'path'
       row =
         text: fullStoryText
 
-      fs.appendFileSync trainFile, JSON.stringify(row) + "\n", 'utf8'
-      fs.appendFileSync validFile, JSON.stringify(row) + "\n", 'utf8'
-      fs.appendFileSync testFile, JSON.stringify(row) + "\n", 'utf8'
+      rows.push row
       storiesProcessed += 1
       rowsWritten += 1
 
     console.log "[prepare_training_data] stories processed:", storiesProcessed
     console.log "[prepare_training_data] rows written:", rowsWritten
 
+    M.saveThis trainFile, rows
+    M.saveThis validFile, rows
+    M.saveThis testFile, rows
     M.saveThis "done:#{stepName}", true
     return

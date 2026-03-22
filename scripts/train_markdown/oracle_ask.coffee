@@ -34,6 +34,12 @@ extractJSON = (raw) ->
     for row in taggedRows when row?.meta?
       tagged.add "#{row.meta.doc_id}|#{row.meta.paragraph_index}"
 
+    remaining = 0
+    for segment in segments
+      key = "#{segment.meta?.doc_id}|#{segment.meta?.paragraph_index}"
+      continue if tagged.has key
+      remaining += 1
+
     pending = []
     for segment in segments
       key = "#{segment.meta?.doc_id}|#{segment.meta?.paragraph_index}"
@@ -42,6 +48,7 @@ extractJSON = (raw) ->
       break if pending.length >= batchSz
 
     console.log "[oracle_ask] pending:", pending.length
+    console.log "[oracle_ask] stories left after this batch:", Math.max(remaining - pending.length, 0)
     M.saveThis viewed, pending
 
     newStoryIdSet = new Set()
