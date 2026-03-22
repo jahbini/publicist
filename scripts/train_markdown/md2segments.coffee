@@ -4,6 +4,7 @@ path = require 'path'
 clean = (txt) ->
   s = String(txt ? '')
   s = s.replace(/{{{First Name}}}/g, 'friend')
+  s = s.replace(/https?:\/\/\S+/g, '')
   s = s.replace(/&[a-zA-Z]+;/g, ' ')
   s = s.replace(/\[([^\]]+)\]\[\d+\]/g, '$1')
   s = s.replace(/\[\d+\]/g, '')
@@ -11,6 +12,7 @@ clean = (txt) ->
   s = s.replace(/[_*]{1,3}([^*_]+)[_*]{1,3}/g, '$1')
   s = s.replace(/ {2,}/g, ' ')
   lines = s.split /\r?\n/
+  lines = (line for line in lines when not /^:\s*$/.test(String(line ? '').trim()))
   while lines.length
     line = String(lines[lines.length - 1] ? '').trim()
     break unless /^:\s*https?:\/\/\S+\s*$/.test(line) or /^https?:\/\/\S+\s*$/.test(line)
