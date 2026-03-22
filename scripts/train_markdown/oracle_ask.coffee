@@ -16,6 +16,8 @@ extractJSON = (raw) ->
     segKey  = M.getStepParam stepName, 'marshalled_stories'
     emoKey  = M.getStepParam stepName, 'kag_emotions'
     newKey  = M.getStepParam stepName, 'new_story_ids'
+    promptPrefix = M.getStepParam stepName, 'prompt_prefix'
+    promptSuffix = M.getStepParam stepName, 'prompt_suffix'
     batchSz = M.getStepParam stepName, 'batch_size'
     maxTok  = M.getStepParam stepName, 'max_tokens'
     viewed  = M.getStepParam stepName,  'kag_viewed'
@@ -61,21 +63,7 @@ extractJSON = (raw) ->
     for segment in pending
       text = segment.text ? ''
       meta = segment.meta ? {}
-
-      prompt = """
-You are a classifier. Given this sample <<< #{text} >>> classify each emotion as:
-"none", "mild", "moderate", "strong", or "extreme".
-
-Return exactly:
-{
-  "anger": classification,
-  "fear": classification,
-  "joy": classification,
-  "sadness": classification,
-  "desire": classification,
-  "curiosity": classification
-}
-"""
+      prompt = "#{promptPrefix}#{text}#{promptSuffix}"
 
       raw = M.callMLX 'generate',
         model: modelDir

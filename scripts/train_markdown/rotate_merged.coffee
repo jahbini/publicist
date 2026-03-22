@@ -1,9 +1,3 @@
-mkPrompt = (row) ->
-  """
-Continue in the same voice and mannner as the text below.
-#{row.prompt}
-""".trim()
-
 toTextExample = (row) ->
   return null unless row?
   return row if row.text?
@@ -27,6 +21,7 @@ isSequential = (a, b) ->
     trainKey  = M.getStepParam stepName, 'train_file'
     validKey  = M.getStepParam stepName, 'valid_file'
     testKey  = M.getStepParam stepName,  'test_file'
+    trainPromptPrefix = M.getStepParam stepName, 'train_prompt_prefix'
 
     viewedEntry = M.theLowdown viewedKey
     viewedRows = viewedEntry?.value
@@ -49,7 +44,7 @@ isSequential = (a, b) ->
       console.error "current",current
       continue unless current?.text?
       newTrain.push
-        text: "#{mkPrompt(current)}\n\n#{nextRow.text}"
+        text: "#{trainPromptPrefix}\n#{current.text}\n\n#{nextRow.text}"
       console.error "training key",newTrain
 
 
