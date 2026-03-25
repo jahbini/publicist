@@ -72,16 +72,21 @@ extractJSON = (raw) ->
       prompt = "#{promptPrefix}#{text}#{promptSuffix}"
 
       raw = M.callMLX 'generate',
-        model: modelDir
-        prompt: prompt
-        "max-tokens": String(maxTok)
-
+         model: modelDir
+         prompt: prompt
+         "max-tokens": String(maxTok)
+         temp: String M.getStepParam stepName, "temperature"
+         "top-p": String M.getStepParam stepName, 'top_p'
+         "top-k": String M.getStepParam stepName, 'top_k'
+        , true
+      
       outRows.push
         meta:
           doc_id: meta.doc_id
           paragraph_index: meta.paragraph_index
         emotions: extractJSON(raw)
 
+      console.log "JIM Emotions from",meta.doc_id, raw
       console.log "[oracle_ask] tagged #{meta.doc_id} #{meta.paragraph_index}"
 
     M.saveThis newKey, newStoryIds
