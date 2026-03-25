@@ -21,9 +21,19 @@ md2segments:
   marshalled_stories: data/marshalled_stories.jsonl
   split_mode: paragraph
 
+select_training_batch:
+  run: train_markdown/select_training_batch.coffee
+  depends_on: [md2segments]
+  needs: []
+  makes: []
+  marshalled_stories: data/marshalled_stories.jsonl
+  new_story_ids: out/new_story_ids.json
+  trained_story_ids: out/trained_story_ids.json
+  batch_size: 4
+
 prepare_training_data:
   run: train_markdown/prepare_training_data.coffee
-  depends_on: [md2segments]
+  depends_on: [select_training_batch]
   needs: []
   makes: []
   marshalled_stories: data/marshalled_stories.jsonl
@@ -47,3 +57,11 @@ lora_train:
   adapter_path: build/adapter
   resume_adapter_file: build/adapter/adapters.safetensors
   stdout_text: out/lora_train.txt
+
+record_trained_batch:
+  run: train_markdown/record_trained_batch.coffee
+  depends_on: [lora_train]
+  needs: []
+  makes: []
+  new_story_ids: out/new_story_ids.json
+  trained_story_ids: out/trained_story_ids.json

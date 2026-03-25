@@ -65,7 +65,7 @@ sanitizeStop = (text) ->
 
     newIdsEntry = M.theLowdown newIdsKey
     newStoryIds = newIdsEntry?.value
-    newStoryIds = await newIdsEntry.notifier if newStoryIds is undefined
+    throw new Error "[#{stepName}] Missing input key '#{newIdsKey}'. Run kag_oracle first or provide #{newIdsKey} on disk before train_lora." if newStoryIds is undefined
 
     throw new Error "[#{stepName}] #{storiesKey} must be an array" unless Array.isArray stories
     throw new Error "[#{stepName}] #{newIdsKey} must be an array" unless Array.isArray newStoryIds
