@@ -1,0 +1,7 @@
+pipeline: kag_oracle
+
+oracle_ask:
+  max_tokens: 80
+  temperature: 0
+  top_p: 1
+  top_k: 0

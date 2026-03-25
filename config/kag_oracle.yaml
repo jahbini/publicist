@@ -1,0 +1,68 @@
+run:
+  model: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+  output_dir: out
+  data_dir: data
+  training_dir: build/train
+  loraLand: build/model
+
+download_model:
+  run: story/hf_download.coffee
+  depends_on: []
+  needs: []
+  makes: []
+  loraLand: build/model
+
+md2segments:
+  run: train_markdown/md2segments.coffee
+  depends_on: [download_model]
+  needs: []
+  makes: []
+  stories_md: data/jim.md
+  marshalled_stories: data/marshalled_stories.jsonl
+  split_mode: paragraph
+
+oracle_ask:
+  run: train_markdown/oracle_ask.coffee
+  depends_on: [md2segments]
+  needs: []
+  makes: []
+  marshalled_stories: data/marshalled_stories.jsonl
+  new_story_ids: out/new_story_ids.json
+  kag_emotions: out/kag_emotions.jsonl
+  kag_viewed: out/viewed.jsonl
+  prompt_prefix: |
+    You are an emotion extraction system.
+    Output valid JSON only.
+    No prose.
+    No code fences.
+    No code.
+    Use exactly these keys:
+    anger, fear, joy, sadness, desire, curiosity
+    Use only these values:
+    none, mild, moderate, strong, extreme
+    If unsupported, use none.
+
+    Text:
+    <<<
+  prompt_suffix: |
+    >>>
+    Return exactly this JSON object shape and nothing else:
+    {
+      "anger": "none|mild|moderate|strong|extreme",
+      "fear": "none|mild|moderate|strong|extreme",
+      "joy": "none|mild|moderate|strong|extreme",
+      "sadness": "none|mild|moderate|strong|extreme",
+      "desire": "none|mild|moderate|strong|extreme",
+      "curiosity": "none|mild|moderate|strong|extreme"
+    }
+  batch_size: 4
+  max_tokens: 80
+
+prepare_kag_segments:
+  run: train_markdown/prepare_kag_segments.coffee
+  depends_on: [oracle_ask]
+  needs: []
+  makes: []
+  marshalled_stories: data/marshalled_stories.jsonl
+  kag_emotions: out/kag_emotions.jsonl
+  kag_segments: out/kag_segments.jsonl

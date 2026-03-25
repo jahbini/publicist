@@ -1,0 +1,49 @@
+run:
+  model: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+  output_dir: out
+  data_dir: data
+  training_dir: build/train
+  loraLand: build/model
+
+download_model:
+  run: story/hf_download.coffee
+  depends_on: []
+  needs: []
+  makes: []
+  loraLand: build/model
+
+md2segments:
+  run: train_markdown/md2segments.coffee
+  depends_on: [download_model]
+  needs: []
+  makes: []
+  stories_md: data/jim.md
+  marshalled_stories: data/marshalled_stories.jsonl
+  split_mode: paragraph
+
+prepare_training_data:
+  run: train_markdown/prepare_training_data.coffee
+  depends_on: [md2segments]
+  needs: []
+  makes: []
+  marshalled_stories: data/marshalled_stories.jsonl
+  new_story_ids: out/new_story_ids.json
+  train_file: build/train/train.jsonl
+  valid_file: build/train/valid.jsonl
+  test_file: build/train/test.jsonl
+
+lora_train:
+  run: train_markdown/lora_train.coffee
+  depends_on: [prepare_training_data]
+  needs: []
+  makes: []
+  batch_size: 1
+  iters: 200
+  max_seq_length: 1024
+  learning_rate: 0.00005
+  train_file: build/train/train.jsonl
+  valid_file: build/train/valid.jsonl
+  test_file: build/train/test.jsonl
+  adapter_path: build/adapter
+  resume_adapter_file: build/adapter/adapters.safetensors
+  stdout_text: out/lora_train.txt
