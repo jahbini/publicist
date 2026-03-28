@@ -77,8 +77,8 @@ fi
   end_time=$(date +%s)
   elapsed=$(( end_time - start_time ))
 
-  if [ "$elapsed" -lt 60 ]; then
-    echo "ERROR: command ran only $elapsed seconds (< 60). Exiting."
+  if [ "$elapsed" -lt 20 ]; then
+    echo "ERROR: command ran only $elapsed seconds (< 20). Exiting."
     exit 1
   fi
 
