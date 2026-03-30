@@ -28,8 +28,7 @@ oracle_ask:
     No explanations. No refusals. No extra text.
     
   mlx:
-    generate:
-      max-tokens: 280
-      temp: 0
-      top-p: 1
-      top-k: 0
+    max-tokens: 280
+    temp: 0
+    top-p: 1
+    top-k: 0

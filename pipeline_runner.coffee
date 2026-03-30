@@ -416,14 +416,11 @@ createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor) ->
     mlxCfg = stepParams.mlx
     merged = getLegacyMlxConfig(cmdType)
     return merged unless isPlainObject(mlxCfg)
-    genericCfg = {}
-    commandCfg = {}
-    for own k, v of mlxCfg
-      continue if isPlainObject(v)
-      genericCfg[k] = v
-    if isPlainObject(mlxCfg[cmdType])
-      commandCfg = Object.assign {}, mlxCfg[cmdType]
-    Object.assign merged, genericCfg, commandCfg
+    # Simple shape only:
+    #   mlx:
+    #     temp: 0.7
+    #     max-tokens: 2000
+    Object.assign merged, mlxCfg
 
   mergeMlxPayload = (cmdType, payload) ->
     merged = getMlxConfig(cmdType)

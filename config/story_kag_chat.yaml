@@ -62,7 +62,6 @@ talk_story:
   prompt_key: cached_prompt_text
   output_text: out/story.txt
   mlx:
-    generate:
-      max-tokens: 2000
-      temp: 0.7
-      min-tokens: 500
+    max-tokens: 2000
+    temp: 0.7
+    min-tokens: 500

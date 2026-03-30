@@ -64,11 +64,10 @@ lora_train:
   adapter_path: build/adapter
   resume_adapter_file: build/adapter/adapters.safetensors
   mlx:
-    lora:
-      batch-size: 1
-      iters: 200
-      max-seq-length: 1024
-      learning-rate: 0.00005
+    batch-size: 1
+    iters: 200
+    max-seq-length: 1024
+    learning-rate: 0.00005
 
 record_trained_batch:
   run: train_markdown/record_trained_batch.coffee
@@ -103,7 +102,6 @@ talk_story:
 
     {{story_text}}
   mlx:
-    generate:
-      max-tokens: 2000
-      temp: 0.7
-      min-tokens: 500
+    max-tokens: 2000
+    temp: 0.7
+    min-tokens: 500

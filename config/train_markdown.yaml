@@ -60,9 +60,8 @@ oracle_ask:
     }
   batch_size: 4
   mlx:
-    generate:
-      max-tokens: 1000
-      max-kv-size: 1024
+    max-tokens: 1000
+    max-kv-size: 1024
 
 prepare_training_data:
   run: train_markdown/prepare_training_data.coffee
@@ -80,11 +79,10 @@ lora_train:
   resume_adapter_file: build/adapter/adapters.safetensors
   stdout_text: out//lora_train.txt
   mlx:
-    lora:
-      batch-size: 1
-      iters: 200
-      max-seq-length: 1024
-      learning-rate: 0.00005
+    batch-size: 1
+    iters: 200
+    max-seq-length: 1024
+    learning-rate: 0.00005
 
 talk_story:
   run: train_markdown/polish_story.coffee
@@ -114,10 +112,9 @@ talk_story:
     {{story_text}}
   output_text: out/story.txt
   mlx:
-    generate:
-      max-tokens: 2000
-      temp: 0.7
-      min-tokens: 500
+    max-tokens: 2000
+    temp: 0.7
+    min-tokens: 500
 
 rotate_merged:
   run: train_markdown/rotate_merged.coffee

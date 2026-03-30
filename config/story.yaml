@@ -77,7 +77,6 @@ polish_story:
     {{story_text}}
   adapter_path: build/adapter
   mlx:
-    generate:
-      temp: 0.7
-      max-tokens: 2000
-      min-tokens: 500
+    temp: 0.7
+    max-tokens: 2000
+    min-tokens: 500
