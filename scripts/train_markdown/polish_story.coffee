@@ -2,28 +2,9 @@
 Use LLM to expand and polish assembled story into Jim narrative voice.
 ###
 
-buildPrompt = (storyText) ->
-  prompt = """
-You are writing in the narrative voice of Jim from St. John's.
-
-Expand the following story fragment into a short reflective narrative of at least 500 words.
-Maintain the same events and ideas, but improve flow, imagery, and voice.
-
-Rules:
-- Speak in the first person as Jim
-- Keep the same order of events.
-- Do not introduce new plot elements.
-- Add natural narration and sensory detail.
-- The tone should be observational, slightly humorous, and reflective.
-- The final length should be about 800–2000 words.
-
-Return only the finished story.
-Story fragment:
-
-#{storyText}
-"""
-
-  return prompt
+renderPromptText = (template, storyText) ->
+  text = String(template ? '')
+  text.replace /\{\{story_text\}\}/g, String(storyText ? '')
 
 cleanGeneratedText = (prompt, rawOutput) ->
   text = String(rawOutput ? '').trim()
@@ -69,10 +50,9 @@ cleanGeneratedText = (prompt, rawOutput) ->
     else
       baseText = storyFragment ? ''
       story = text: baseText
-
     prompt = null
     if promptText?
-      prompt = promptText
+      prompt = renderPromptText promptText, baseText
     else if promptKey?
       promptEntry = S.theLowdown promptKey
       prompt = promptEntry?.value
@@ -83,7 +63,7 @@ cleanGeneratedText = (prompt, rawOutput) ->
           prompt = await promptEntry.notifier
       throw new Error "[#{S.stepName}] Missing input key '#{promptKey}'" if prompt is undefined
     else
-      prompt = buildPrompt baseText
+      throw new Error "[#{S.stepName}] Missing prompt_text or prompt_key"
     modelDir = explicitModelDir ? S.theLowdown(modelMemoKey)?.value
     throw new Error "[#{S.stepName}] Missing modelDir in memo" unless modelDir?
 

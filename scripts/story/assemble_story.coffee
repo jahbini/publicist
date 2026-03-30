@@ -11,7 +11,7 @@ joinParagraphs = (items) ->
     continue unless text.length > 0
     parts.push text
 
-  rval = parts.join "\n\n"
+  rval = parts.join "\n"
   return rval
 
 @step =
@@ -38,16 +38,16 @@ joinParagraphs = (items) ->
     realizationText = expandedParts.realization?.text ? ''
 
     text = joinParagraphs [
-      sceneText
-      arrivalText
-      disturbanceText
-      reflectionText
-      realizationText
+      "scene - " + sceneText
+      "arrival -  " + arrivalText
+      "disturbance - " + disturbanceText
+      "reflection - " + reflectionText
+      "realization - " + realizationText
     ]
 
     out =
       story_id: expanded.story_id ? null
-      text: text
+      text:  text
       parts: expanded
 
     M.saveThis "story", out
