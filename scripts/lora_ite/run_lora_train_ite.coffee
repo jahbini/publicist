@@ -69,11 +69,9 @@ hasAdapterConfig = (adapterPath) ->
     testOnly = false if testOnly is undefined
     adapterPath = M.getStepParam(stepName, 'adapter_path')
     resumeFile = M.getStepParam(stepName, 'resume_adapter_file')
-    modelMemoKey = M.getStepParam(stepName, 'model_memo_key')
-    modelMemoKey = 'modelDir' if modelMemoKey is undefined
-    explicitModelDir = M.getStepParam(stepName, 'model_dir')
+    loraLand = M.getStepParam(stepName, 'loraLand')
     trainingDir = M.getStepParam(stepName, 'training_dir')
-    modelDir = explicitModelDir ? M.theLowdown(modelMemoKey)?.value ? M.theLowdown('modelDir')?.value
+    modelDir = loraLand
 
     throw new Error "[#{stepName}] Missing model directory" unless modelDir?
     throw new Error "[#{stepName}] Missing training_dir" unless trainingDir?
