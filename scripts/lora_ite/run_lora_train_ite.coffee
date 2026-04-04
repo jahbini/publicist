@@ -37,6 +37,14 @@ hasAdapterConfig = (adapterPath) ->
   desc: "Run MLX LoRA training using direct Memo access"
 
   action: (M, stepName) ->
+    selectedEntry = M.theLowdown 'selected_story_ids'
+    selectedStoryIDs = selectedEntry?.value
+    if selectedStoryIDs is undefined
+      if typeof selectedEntry?.waitFor is 'function'
+        selectedStoryIDs = await selectedEntry.waitFor()
+      else if selectedEntry?.notifier?
+        selectedStoryIDs = await selectedEntry.notifier
+
     trainEntry = M.theLowdown 'train_rows'
     trainRows = trainEntry?.value
     if trainRows is undefined
@@ -61,6 +69,7 @@ hasAdapterConfig = (adapterPath) ->
       else if testEntry?.notifier?
         testRows = await testEntry.notifier
 
+    throw new Error "[#{stepName}] selected_story_ids must be an array" unless Array.isArray selectedStoryIDs
     throw new Error "[#{stepName}] train_rows must be an array" unless Array.isArray trainRows
     throw new Error "[#{stepName}] valid_rows must be an array" unless Array.isArray validRows
     throw new Error "[#{stepName}] test_rows must be an array" unless Array.isArray testRows
@@ -125,13 +134,14 @@ hasAdapterConfig = (adapterPath) ->
       valid_rows_count: validRows.length
       test_rows_count: testRows.length
       checkpoint_path: checkpointPath
+      story_ids: selectedStoryIDs
 
     console.log "[run_lora_train_ite] train rows:", trainRows.length
     console.log "[run_lora_train_ite] valid rows:", validRows.length
     console.log "[run_lora_train_ite] test rows:", testRows.length
     console.log "[run_lora_train_ite] run id:", runID
 
+    M.saveThis "loraTrainingRun{#{runID}}.json", runRecord
     M.saveThis 'lora_stdout', stdoutText
-    M.saveThis 'lora_run_record', runRecord
     M.saveThis "done:#{stepName}", true
     return
