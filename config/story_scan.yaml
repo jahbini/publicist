@@ -1,3 +1,7 @@
+# Optional diagnostic recipe.
+# Keep this around to inspect story/raw-derived text contamination when
+# something looks polluted. Normal cleaning should happen at DB ingress
+# in base_ite, so this is a debugging/preflight tool, not a routine run.
 run:
   model: Qwen/Qwen3-4B-Instruct-2507
   output_dir: out

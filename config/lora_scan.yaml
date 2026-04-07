@@ -1,3 +1,7 @@
+# Optional diagnostic recipe.
+# Keep this around to inspect LoRA training inputs before an expensive
+# training run if contamination is suspected. This is a manual validation
+# tool, not part of the normal _ite production recipes.
 run:
   model: Qwen/Qwen3-4B-Instruct-2507
   output_dir: out
