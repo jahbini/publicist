@@ -469,10 +469,10 @@
       }
     }
 
-    function renderContinuous(run) {
+    function renderContinuous(controls) {
       const box = byId('continuous-checkbox');
       if (controlsDirty) return;
-      box.checked = run?.loop_enabled === true;
+      box.checked = controls?.continuous === true;
     }
 
     async function refresh() {
@@ -498,7 +498,7 @@
       ]);
 
       renderKillButton(run);
-      renderContinuous(run);
+      renderContinuous(data.controls || {});
       renderControls(data.controls || {});
       renderFiles(byId('out-files'), data.out_files);
       renderFiles(byId('diary-files'), data.diary_files);

@@ -14,6 +14,7 @@ repeatLoop =
   payload: null
   timer: null
   next_launch_at: null
+UI_CONTROL_PATH = path.join(CWD, 'state', 'ui-control.json')
 
 readJson = (p, fallback = null) ->
   return fallback unless fs.existsSync(p)
@@ -33,6 +34,17 @@ writeUiRunPatch = (patch) ->
   current = {} unless current? and typeof current is 'object' and not Array.isArray(current)
   next = Object.assign {}, current, patch
   writeText runPath, JSON.stringify(next, null, 2)
+  next
+
+readUiControl = ->
+  current = readJson(UI_CONTROL_PATH, {})
+  current = {} unless current? and typeof current is 'object' and not Array.isArray(current)
+  current
+
+writeUiControl = (patch) ->
+  current = readUiControl()
+  next = Object.assign {}, current, patch
+  writeText UI_CONTROL_PATH, JSON.stringify(next, null, 2)
   next
 
 pad2 = (n) ->
@@ -110,6 +122,7 @@ readYaml = (p) ->
 
 buildControls = ->
   override = readOverride()
+  uiControl = readUiControl()
   libraryDoc = readYaml path.join(CWD, 'data', 'jim_story_library.yaml')
   library = libraryDoc?.library ? {}
   storyStep = override?.select_story_recipe ? {}
@@ -131,6 +144,7 @@ buildControls = ->
     disturbance: storyStep.disturbance ? ''
     reflection: storyStep.reflection ? ''
     realization: storyStep.realization ? ''
+    continuous: uiControl.continuous is true
     pipelines: [
       'base_ite'
       'oracle_ite'
@@ -282,7 +296,7 @@ readRequestBody = (req) ->
 clearStepState = ->
   stateDir = path.join(CWD, 'state')
   return unless fs.existsSync stateDir
-  for name in fs.readdirSync(stateDir) when /^step-.*\.json$/.test(name) or /^ui-.*\.(json|jsonl)$/.test(name)
+  for name in fs.readdirSync(stateDir) when /^step-.*\.json$/.test(name) or /^ui-run\.(json|jsonl)$/.test(name) or /^ui-events\.(json|jsonl)$/.test(name)
     fs.unlinkSync path.join(stateDir, name)
 
   pipelinePath = path.join(CWD, 'pipeline.json')
@@ -326,6 +340,7 @@ stopRepeatLoop = ->
   repeatLoop.payload = null
   repeatLoop.timer = null
   repeatLoop.next_launch_at = null
+  writeUiControl continuous: false
 
 scheduleRepeatLaunch = ->
   return unless repeatLoop.enabled and repeatLoop.payload?
@@ -465,6 +480,7 @@ handleLaunch = (req, res) ->
   if payload.continuous is true
     repeatLoop.enabled = true
     repeatLoop.payload = Object.assign {}, payload
+    writeUiControl continuous: true
   else
     stopRepeatLoop()
 
