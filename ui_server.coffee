@@ -9,6 +9,7 @@ CWD = process.cwd()
 PORT = Number(process.env.UI_PORT ? 4311)
 RUNNER = path.join(CWD, 'pipeline_runner.coffee')
 EXEC_ROOT = path.dirname(RUNNER)
+HOST = if process.argv[2] is 'net' then '0.0.0.0' else '127.0.0.1'
 repeatLoop =
   enabled: false
   payload: null
@@ -563,8 +564,8 @@ server = http.createServer (req, res) ->
   res.writeHead 404, 'Content-Type': 'text/plain; charset=utf-8'
   res.end 'not found'
 
-server.listen PORT, '127.0.0.1', ->
-  console.log "[ui_server] listening on http://127.0.0.1:#{PORT}"
+server.listen PORT, HOST, ->
+  console.log "[ui_server] listening on http://#{HOST}:#{PORT}"
 
 setInterval ->
   return unless repeatLoop.enabled and repeatLoop.next_launch_at?
