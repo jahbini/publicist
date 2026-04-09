@@ -109,7 +109,7 @@ hasAdapterConfig = (adapterPath) ->
     console.log "[run_lora_train_ite] test rows:", testRows.length
     console.log "[run_lora_train_ite] run id:", runID
 
-    L.saveThis "loraTrainingRun{#{runID}}.json", runRecord
     L.make 'lora_stdout', stdoutText
+    L.make 'lora_run_record', runRecord
     L.done()
     return

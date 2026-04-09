@@ -19,6 +19,8 @@ artifacts:
     target: build/train/test.jsonl
   lora_stdout:
     target: out/lora_train.txt
+  lora_run_record:
+    target: out/lora_run_record.json
   trained_story_ids:
     target: out/trained_story_ids.json
 
@@ -39,7 +41,7 @@ run_lora_train_ite:
   run: lora_ite/run_lora_train_ite.coffee
   depends_on: [build_lora_dataset_ite]
   needs: [selected_story_ids, train_rows, valid_rows, test_rows]
-  makes: [lora_stdout]
+  makes: [lora_stdout, lora_run_record]
   test_only: false
   adapter_path: build/adapter
   resume_adapter_file: build/adapter/adapters.safetensors
@@ -52,5 +54,5 @@ run_lora_train_ite:
 record_lora_training_ite:
   run: lora_ite/record_lora_training_ite.coffee
   depends_on: [run_lora_train_ite]
-  needs: []
+  needs: [lora_run_record]
   makes: [trained_story_ids]
