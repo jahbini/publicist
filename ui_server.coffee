@@ -48,6 +48,15 @@ writeUiControl = (patch) ->
   writeText UI_CONTROL_PATH, JSON.stringify(next, null, 2)
   next
 
+dumpYaml = (value) ->
+  yaml.dump value,
+    lineWidth: 120
+    noRefs: true
+
+readRecipe = (pipeline) ->
+  return {} unless typeof pipeline is 'string' and pipeline.length
+  readYaml path.join(CWD, 'config', "#{pipeline}.yaml")
+
 pad2 = (n) ->
   text = String(Number(n) ? 0)
   if text.length < 2 then "0#{text}" else text
@@ -124,9 +133,13 @@ readYaml = (p) ->
 buildControls = ->
   override = readOverride()
   uiControl = readUiControl()
+  pending = uiControl.pending ? {}
+  pipelineName = pending.pipeline ? override.pipeline ? ''
+  recipe = readRecipe(pipelineName)
   libraryDoc = readYaml path.join(CWD, 'data', 'jim_story_library.yaml')
   library = libraryDoc?.library ? {}
-  storyStep = override?.select_story_recipe ? {}
+  recipeStoryStep = recipe?.select_story_recipe ? {}
+  overrideStoryStep = override?.select_story_recipe ? {}
 
   makeOptions = (shelfName) ->
     shelf = library?[shelfName] ? {}
@@ -137,14 +150,29 @@ buildControls = ->
     rows.sort (a, b) -> String(a.label).localeCompare String(b.label)
     rows
 
+  overrideObject = buildOverrideObject
+    pipeline: pipelineName
+    story_id: pending.story_id ? overrideStoryStep.story_id ? recipeStoryStep.story_id ? ''
+    scene: pending.scene ? overrideStoryStep.scene ? recipeStoryStep.scene ? ''
+    arrival: pending.arrival ? overrideStoryStep.arrival ? recipeStoryStep.arrival ? ''
+    disturbance: pending.disturbance ? overrideStoryStep.disturbance ? recipeStoryStep.disturbance ? ''
+    reflection: pending.reflection ? overrideStoryStep.reflection ? recipeStoryStep.reflection ? ''
+    realization: pending.realization ? overrideStoryStep.realization ? recipeStoryStep.realization ? ''
+
+  overrideText = if typeof uiControl.override_text is 'string' and uiControl.override_text.trim().length
+    uiControl.override_text
+  else
+    dumpYaml overrideObject
+  recipeText = if pipelineName.length then dumpYaml(recipe) else ''
+
   {
-    pipeline: override.pipeline ? ''
-    story_id: storyStep.story_id ? ''
-    scene: storyStep.scene ? ''
-    arrival: storyStep.arrival ? ''
-    disturbance: storyStep.disturbance ? ''
-    reflection: storyStep.reflection ? ''
-    realization: storyStep.realization ? ''
+    pipeline: pipelineName
+    story_id: pending.story_id ? overrideStoryStep.story_id ? recipeStoryStep.story_id ? ''
+    scene: pending.scene ? overrideStoryStep.scene ? recipeStoryStep.scene ? ''
+    arrival: pending.arrival ? overrideStoryStep.arrival ? recipeStoryStep.arrival ? ''
+    disturbance: pending.disturbance ? overrideStoryStep.disturbance ? recipeStoryStep.disturbance ? ''
+    reflection: pending.reflection ? overrideStoryStep.reflection ? recipeStoryStep.reflection ? ''
+    realization: pending.realization ? overrideStoryStep.realization ? recipeStoryStep.realization ? ''
     continuous: uiControl.continuous is true
     pipelines: [
       'base_ite'
@@ -164,6 +192,8 @@ buildControls = ->
     disturbance_options: makeOptions 'disturbances'
     reflection_options: makeOptions 'reflections'
     realization_options: makeOptions 'realizations'
+    override_text: overrideText
+    recipe_text: recipeText
   }
 
 describeOutputFile = (relativePath, runStart = null) ->
@@ -345,8 +375,60 @@ stopRepeatLoop = ->
   repeatLoop.next_launch_at = null
   writeUiControl continuous: false
 
+buildLaunchPayloadFromControl = ->
+  uiControl = readUiControl()
+  pending = uiControl.pending ? {}
+  payload =
+    pipeline: pending.pipeline ? readOverride().pipeline ? ''
+    continuous: uiControl.continuous is true
+
+  for key in ['story_id', 'scene', 'arrival', 'disturbance', 'reflection', 'realization']
+    payload[key] = pending[key] if pending[key]?
+
+  payload
+
+buildOverrideObject = (payload) ->
+  override = readOverride()
+  pipelineName = String(payload.pipeline ? override.pipeline ? '')
+  recipe = readRecipe(pipelineName)
+  recipeStory = recipe?.select_story_recipe ? {}
+  override.pipeline = pipelineName
+
+  if override.pipeline is 'diary_ite'
+    override.select_story_recipe ?= {}
+
+  if override.pipeline is 'diary_ite'
+    storyID = String(payload.story_id ? '').trim()
+    if storyID.length and storyID isnt String(recipeStory.story_id ? '')
+      override.select_story_recipe.story_id = storyID
+    else
+      delete override.select_story_recipe.story_id
+
+  if override.pipeline is 'diary_ite'
+    for key in ['scene', 'arrival', 'disturbance', 'reflection', 'realization']
+      value = String(payload[key] ? '').trim()
+      recipeValue = String(recipeStory[key] ? '')
+      if value.length and value isnt recipeValue
+        override.select_story_recipe[key] = value
+      else
+        delete override.select_story_recipe[key]
+
+    delete override.select_story_recipe if Object.keys(override.select_story_recipe).length is 0
+  else
+    delete override.select_story_recipe
+
+  override
+
+writeOverrideText = (text) ->
+  overridePath = path.join(CWD, 'override.yaml')
+  writeText overridePath, text
+  parsed = readYaml overridePath
+  throw new Error 'override.yaml must parse to an object' unless parsed? and typeof parsed is 'object' and not Array.isArray(parsed)
+  throw new Error 'override.yaml must include pipeline' unless typeof parsed.pipeline is 'string' and parsed.pipeline.trim().length
+  parsed
+
 scheduleRepeatLaunch = ->
-  return unless repeatLoop.enabled and repeatLoop.payload?
+  return unless repeatLoop.enabled
 
   pipelineState = readJson path.join(CWD, 'pipeline.json'), null
   if pipelineState?.status is 'shutdown'
@@ -366,7 +448,7 @@ scheduleRepeatLaunch = ->
     next_launch_at: repeatLoop.next_launch_at
 
   repeatLoop.timer = setTimeout ->
-    return unless repeatLoop.enabled and repeatLoop.payload?
+    return unless repeatLoop.enabled
     pipelineStateNow = readJson path.join(CWD, 'pipeline.json'), null
     if pipelineStateNow?.status is 'shutdown'
       stopRepeatLoop()
@@ -376,7 +458,13 @@ scheduleRepeatLaunch = ->
         next_launch_at: null
       return
 
-    override = writeOverride repeatLoop.payload
+    uiControl = readUiControl()
+    launchPayload = buildLaunchPayloadFromControl()
+    overrideText = if typeof uiControl.override_text is 'string' and uiControl.override_text.trim().length
+      uiControl.override_text
+    else
+      dumpYaml buildOverrideObject(launchPayload)
+    override = writeOverrideText overrideText
     clearStepState()
     launch = startRunner()
     seedUiRun launch, override
@@ -385,31 +473,6 @@ scheduleRepeatLaunch = ->
       countdown_seconds: null
       next_launch_at: null
   , delayMs
-
-writeOverride = (payload) ->
-  override = readOverride()
-  override.pipeline = String(payload.pipeline ? override.pipeline ? '')
-
-  if override.pipeline is 'diary_ite'
-    override.select_story_recipe ?= {}
-
-  if override.pipeline is 'diary_ite' and payload.story_id?
-    override.select_story_recipe.story_id = String(payload.story_id)
-
-  if override.pipeline is 'diary_ite'
-    for key in ['scene', 'arrival', 'disturbance', 'reflection', 'realization']
-      if payload[key]?
-        value = String(payload[key]).trim()
-        if value.length
-          override.select_story_recipe[key] = value
-        else
-          delete override.select_story_recipe[key]
-
-  text = yaml.dump override,
-    lineWidth: 120
-    noRefs: true
-  writeText path.join(CWD, 'override.yaml'), text
-  override
 
 startRunner = ->
   runTag = buildRunTag()
@@ -480,14 +543,28 @@ handleLaunch = (req, res) ->
   pipeline = String(payload.pipeline ? '').trim()
   return sendJson(res, 400, { ok: false, error: 'pipeline is required' }) unless pipeline.length
 
+  writeUiControl
+    pending:
+      pipeline: pipeline
+      story_id: payload.story_id ? ''
+      scene: payload.scene ? ''
+      arrival: payload.arrival ? ''
+      disturbance: payload.disturbance ? ''
+      reflection: payload.reflection ? ''
+      realization: payload.realization ? ''
+
   if payload.continuous is true
     repeatLoop.enabled = true
     repeatLoop.payload = Object.assign {}, payload
     writeUiControl continuous: true
   else
     stopRepeatLoop()
-
-  override = writeOverride payload
+  overrideText = if typeof payload.override_text is 'string' and payload.override_text.trim().length
+    payload.override_text
+  else
+    dumpYaml buildOverrideObject(payload)
+  writeUiControl override_text: overrideText
+  override = writeOverrideText overrideText
   clearStepState()
   launch = startRunner()
   seedUiRun launch, override
@@ -539,6 +616,38 @@ handleKill = (req, res) ->
     pid: pid
     target_kind: targetKind
 
+handleControl = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  pipeline = String(payload.pipeline ? '').trim()
+  current = readUiControl()
+  next =
+    continuous: if payload.continuous is true then true else false
+    pending:
+      pipeline: if pipeline.length then pipeline else (current?.pending?.pipeline ? readOverride().pipeline ? '')
+      story_id: String(payload.story_id ? '')
+      scene: String(payload.scene ? '')
+      arrival: String(payload.arrival ? '')
+      disturbance: String(payload.disturbance ? '')
+      reflection: String(payload.reflection ? '')
+      realization: String(payload.realization ? '')
+    override_text: if typeof payload.override_text is 'string' then payload.override_text else null
+
+  if not (typeof next.override_text is 'string' and next.override_text.trim().length)
+    next.override_text = dumpYaml buildOverrideObject(next.pending)
+
+  writeUiControl next
+  repeatLoop.enabled = next.continuous is true if repeatLoop.enabled or next.continuous is true
+
+  sendJson res, 200,
+    ok: true
+    control: next
+
 server = http.createServer (req, res) ->
   url = req.url ? '/'
   if url is '/' or url is '/index.html'
@@ -553,6 +662,11 @@ server = http.createServer (req, res) ->
     return sendJson res, 200, { ok: true, file: payload }
   if url is '/api/launch' and req.method is 'POST'
     return Promise.resolve(handleLaunch(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/control' and req.method is 'POST'
+    return Promise.resolve(handleControl(req, res)).catch (err) ->
       sendJson res, 500,
         ok: false
         error: String(err?.message ? err)

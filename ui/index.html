@@ -162,6 +162,29 @@
       background: #fff;
       color: var(--ink);
     }
+    .controls textarea {
+      font: 13px/1.45 var(--mono);
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      min-height: 260px;
+      resize: vertical;
+    }
+    .yaml-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .yaml-pane {
+      display: grid;
+      gap: 8px;
+    }
+    .yaml-readonly {
+      background: #f4efe4;
+      color: #4a504d;
+    }
     .controls button {
       background: var(--accent);
       color: #fff;
@@ -231,6 +254,7 @@
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
       .hero { flex-direction: column; align-items: start; }
+      .yaml-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -292,6 +316,28 @@
       </section>
 
       <section class="panel">
+        <h2>Recipe And Override</h2>
+        <div class="hint" style="margin-bottom:10px;">
+          Left is the recipe background. Right is the queued foreground override that will be written for the next run.
+        </div>
+        <div class="yaml-grid">
+          <div class="yaml-pane">
+            <label>
+              Recipe Background
+              <textarea id="recipe-viewer" class="yaml-readonly" spellcheck="false" readonly></textarea>
+            </label>
+          </div>
+          <div class="yaml-pane">
+            <label>
+              Queued Override
+              <textarea id="override-editor" spellcheck="false"></textarea>
+            </label>
+            <div id="override-status" class="hint mono"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
         <h2>Outputs</h2>
         <div id="out-files" class="files"></div>
         <h2 style="margin-top:16px;">Diary Files</h2>
@@ -340,6 +386,10 @@
     let launchBusy = false;
     let controlsDirty = false;
     let controlsInitialized = false;
+    let overrideDirty = false;
+    let overrideInitialized = false;
+    let manualOverrideDirty = false;
+    let saveTimer = null;
 
     function formatLocalTime(value) {
       if (!value) return '';
@@ -429,6 +479,20 @@
       controlsInitialized = true;
     }
 
+    function renderOverrideEditor(controls) {
+      const recipeViewer = byId('recipe-viewer');
+      const editor = byId('override-editor');
+      const recipeText = typeof controls?.recipe_text === 'string' ? controls.recipe_text : '';
+      const text = typeof controls?.override_text === 'string' ? controls.override_text : '';
+      recipeViewer.value = recipeText;
+      if (overrideDirty && overrideInitialized) {
+        return;
+      }
+      editor.value = text;
+      overrideInitialized = true;
+      byId('override-status').textContent = '';
+    }
+
     function renderSteps(rows) {
       byId('steps-body').innerHTML = (rows || []).map((row) => `
         <tr>
@@ -504,6 +568,7 @@
       renderKillButton(run);
       renderContinuous(data.controls || {});
       renderControls(data.controls || {});
+      renderOverrideEditor(data.controls || {});
       renderFiles(byId('out-files'), data.out_files);
       renderFiles(byId('diary-files'), data.diary_files);
       renderSteps(data.steps);
@@ -547,7 +612,8 @@
           disturbance: byId('disturbance-select').value,
           reflection: byId('reflection-select').value,
           realization: byId('realization-select').value,
-          continuous: byId('continuous-checkbox').checked
+          continuous: byId('continuous-checkbox').checked,
+          override_text: byId('override-editor').value
         };
         const res = await fetch('/api/launch', {
           method: 'POST',
@@ -559,7 +625,10 @@
           throw new Error(data.error || 'launch failed');
         }
         controlsDirty = false;
+        overrideDirty = false;
+        manualOverrideDirty = false;
         result.textContent = `pid ${data.pid}  pipeline ${data.override?.pipeline || ''}`;
+        byId('override-status').textContent = 'override written for current run';
         await refresh();
       } catch (err) {
         result.textContent = String(err.message || err);
@@ -567,6 +636,49 @@
         launchBusy = false;
         launchButton.disabled = false;
       }
+    }
+
+    async function saveControlState() {
+      const payload = {
+        pipeline: byId('pipeline-select').value,
+        story_id: byId('story-select').value,
+        scene: byId('scene-select').value,
+        arrival: byId('arrival-select').value,
+        disturbance: byId('disturbance-select').value,
+        reflection: byId('reflection-select').value,
+        realization: byId('realization-select').value,
+        continuous: byId('continuous-checkbox').checked
+      };
+
+      if (manualOverrideDirty) {
+        payload.override_text = byId('override-editor').value;
+      }
+
+      const res = await fetch('/api/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'control save failed');
+      }
+      controlsDirty = false;
+      overrideDirty = false;
+      if (manualOverrideDirty) {
+        byId('override-status').textContent = 'queued manual override for next run';
+      } else {
+        byId('override-status').textContent = 'queued for next run';
+      }
+    }
+
+    function scheduleControlSave() {
+      if (saveTimer) window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(() => {
+        saveControlState().catch((err) => {
+          byId('override-status').textContent = String(err.message || err);
+        });
+      }, 250);
     }
 
     async function killPipeline() {
@@ -591,27 +703,49 @@
     setInterval(() => refresh().catch(console.error), 2000);
     byId('pipeline-select').addEventListener('change', () => {
       controlsDirty = true;
+      if (!manualOverrideDirty) overrideDirty = false;
+      scheduleControlSave();
     });
     byId('story-select').addEventListener('change', () => {
       controlsDirty = true;
+      if (!manualOverrideDirty) overrideDirty = false;
+      scheduleControlSave();
     });
     byId('scene-select').addEventListener('change', () => {
       controlsDirty = true;
+      if (!manualOverrideDirty) overrideDirty = false;
+      scheduleControlSave();
     });
     byId('arrival-select').addEventListener('change', () => {
       controlsDirty = true;
+      if (!manualOverrideDirty) overrideDirty = false;
+      scheduleControlSave();
     });
     byId('disturbance-select').addEventListener('change', () => {
       controlsDirty = true;
+      if (!manualOverrideDirty) overrideDirty = false;
+      scheduleControlSave();
     });
     byId('reflection-select').addEventListener('change', () => {
       controlsDirty = true;
+      if (!manualOverrideDirty) overrideDirty = false;
+      scheduleControlSave();
     });
     byId('realization-select').addEventListener('change', () => {
       controlsDirty = true;
+      if (!manualOverrideDirty) overrideDirty = false;
+      scheduleControlSave();
     });
     byId('continuous-checkbox').addEventListener('change', () => {
       controlsDirty = true;
+      scheduleControlSave();
+    });
+    byId('override-editor').addEventListener('input', () => {
+      controlsDirty = true;
+      overrideDirty = true;
+      manualOverrideDirty = true;
+      byId('override-status').textContent = 'editing queued override...';
+      scheduleControlSave();
     });
     byId('launch-button').addEventListener('click', () => {
       launchPipeline().catch(console.error);
