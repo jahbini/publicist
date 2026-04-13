@@ -10,6 +10,7 @@ Rules:
 - update a step memory when its contract changes
 - prefer one file per important step
 - record inputs, outputs, invariants, and pitfalls
+- if a stale machine bug is diagnosed from logs, update the affected step memory so the failure mode is explicit
 - do not use this directory for general notes or speculation
 
 Suggested use:

@@ -19,6 +19,7 @@ Invariants:
 - must work on a virgin DB
 - missing `allStories.jsonl` materialization must be treated like `[]`
 - story headings come from markdown lines starting with `# `
+- assumes the SQLite handle is already open in the runner; upstream reset must clear tables, not unlink `runtime.sqlite`
 
 Downstream consumers:
 - `oracle_ite`
@@ -28,3 +29,4 @@ Downstream consumers:
 Known pitfalls:
 - do not add brittle pre-checks that block fresh DB seeding
 - do not silently replace this filter with a broader or different cleaner
+- if `base_ite` removes `runtime.sqlite` after startup, later writes can appear to run while the DB is unusable
