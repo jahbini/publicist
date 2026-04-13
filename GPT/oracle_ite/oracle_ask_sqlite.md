@@ -8,6 +8,7 @@ Inputs:
 - meta read `storiesMissingKag.jsonl`
 - params `prompt_text`, `batch_size`, `model_dir` or `quantized_model_memo_key`
 - optional `adapter_path`
+- optional `mlx` object, which must be passed through to MLX generate
 
 Outputs:
 - artifact `new_story_ids`
@@ -28,6 +29,7 @@ Retry behavior:
 
 Invariants:
 - `batch_size` must be present and a positive integer
+- recipe `mlx` limits must actually be passed into every generate call
 - failures should increment oracle fail count so hard stories move to the end
 - success should reset oracle fail count for that story
 
@@ -38,3 +40,4 @@ KAG shape:
 Known pitfalls:
 - do not revert to whole-story-only prompting
 - do not reintroduce overlapping retry windows
+- if oracle OOM appears after a rebuild, inspect `quantize_model` first; a convert-only `build/model4` can look valid but be far too large

@@ -98,12 +98,16 @@ isUsableEmotionList = (emotions) ->
   return false unless emotions? and typeof emotions is 'object'
   Object.keys(emotions).length >= 1
 
-runOracleOnce = (S, modelDir, prompt, adapterPath, debugMlx = false) ->
+runOracleOnce = (S, modelDir, prompt, adapterPath, mlxConfig, debugMlx = false) ->
   args =
     model: modelDir
     prompt: prompt
 
   args["adapter-path"] = adapterPath if adapterPath?
+  if mlxConfig? and typeof mlxConfig is 'object' and not Array.isArray(mlxConfig)
+    for own key, value of mlxConfig
+      continue unless value?
+      args[key] = value
 
   raw = S.callMLX 'generate', args, debugMlx
 
@@ -221,6 +225,8 @@ mergeEmotionLists = (rows) ->
     batchSzRaw = S.param 'batch_size'
     batchSz = Number(batchSzRaw)
     throw new Error "[oracle_ask_sqlite] batch_size must be a positive integer" unless Number.isFinite(batchSz) and batchSz > 0 and Math.floor(batchSz) is batchSz
+    mlxConfig = S.param 'mlx', null
+    throw new Error "[oracle_ask_sqlite] mlx must be an object when provided" if mlxConfig? and (typeof mlxConfig isnt 'object' or Array.isArray(mlxConfig))
     quantizedModelMemoKey = S.param 'quantized_model_memo_key', 'quantizedModelDir'
     adapterPath = S.param 'adapter_path', null
     modelDir = S.theLowdown(quantizedModelMemoKey)?.value ? S.param('model_dir') ? S.theLowdown('modelDir')?.value
@@ -268,7 +274,7 @@ mergeEmotionLists = (rows) ->
 
       for group in storyGroups
         groupPrompt = renderPrompt promptText, group.text
-        attempt1 = runOracleOnce S, modelDir, groupPrompt, adapterPath
+        attempt1 = runOracleOnce S, modelDir, groupPrompt, adapterPath, mlxConfig
         finalAttempt = attempt1
         retryAttempts = []
 
@@ -279,7 +285,7 @@ mergeEmotionLists = (rows) ->
 
           for chunk in retryChunks
             chunkPrompt = renderPrompt promptText, chunk.text
-            attempt2 = runOracleOnce S, modelDir, chunkPrompt, adapterPath, true
+            attempt2 = runOracleOnce S, modelDir, chunkPrompt, adapterPath, mlxConfig, true
             usable = isUsableEmotionList(attempt2.filtered)
             retryAttempts.push
               group_index: group.group_index

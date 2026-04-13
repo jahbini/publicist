@@ -35,6 +35,28 @@ inspectMLXModelDir = (modelDir) ->
     reason: if missing.length then "missing #{missing.join(', ')}" else 'ok'
   }
 
+readConfig = (modelDir) ->
+  configPath = path.join modelDir, 'config.json'
+  return null unless fs.existsSync configPath
+  try
+    JSON.parse fs.readFileSync(configPath, 'utf8')
+  catch
+    null
+
+inspectQuantizedModelDir = (modelDir, qBitsRequested) ->
+  baseState = inspectMLXModelDir modelDir
+  return baseState unless baseState.valid
+  return baseState unless qBitsRequested
+
+  config = readConfig modelDir
+  quantization = config?.quantization
+  return { valid: false, reason: 'missing config.json quantization metadata' } unless quantization? and typeof quantization is 'object'
+
+  return {
+    valid: true
+    reason: 'ok'
+  }
+
 @step =
   desc: "Quantize the laptop oracle MLX model into build/model4"
 
@@ -42,14 +64,17 @@ inspectMLXModelDir = (modelDir) ->
     sourceParam = S.param 'source_model_dir', 'build/model'
     targetParam = S.param 'quantized_model_dir', 'build/model4'
     memoKey = S.param 'quantized_model_memo_key', 'quantizedModelDir'
+    mlxConfig = S.param 'mlx', null
+    throw new Error "[quantize_model] mlx must be an object when provided" if mlxConfig? and (typeof mlxConfig isnt 'object' or Array.isArray(mlxConfig))
 
     sourceDir = path.resolve sourceParam
     targetDir = path.resolve targetParam
+    qBitsRequested = Number.isFinite(Number(mlxConfig?['q-bits'])) and Number(mlxConfig['q-bits']) > 0
 
     sourceState = inspectMLXModelDir sourceDir
     throw new Error "[quantize_model] source model invalid at #{sourceDir}: #{sourceState.reason}" unless sourceState.valid
 
-    targetState = inspectMLXModelDir targetDir
+    targetState = inspectQuantizedModelDir targetDir, qBitsRequested
     if targetState.valid
       console.log "[quantize_model] quantized model already exists, skipping"
       S.saveThis memoKey, targetDir
@@ -63,11 +88,16 @@ inspectMLXModelDir = (modelDir) ->
     fs.mkdirSync path.dirname(targetDir), recursive: true
 
     console.log "[quantize_model] creating #{targetParam} from #{sourceParam}"
-    S.callMLX 'convert',
+    convertArgs =
       "hf-path": sourceDir
       "mlx-path": targetDir
+    if mlxConfig? and typeof mlxConfig is 'object'
+      for own key, value of mlxConfig
+        continue unless value?
+        convertArgs[key] = value
+    S.callMLX 'convert', convertArgs
 
-    finalState = inspectMLXModelDir targetDir
+    finalState = inspectQuantizedModelDir targetDir, qBitsRequested
     throw new Error "[quantize_model] quantized model invalid at #{targetDir}: #{finalState.reason}" unless finalState.valid
 
     console.log "[quantize_model] quantization complete"
