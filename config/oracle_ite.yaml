@@ -52,10 +52,19 @@ oracle_ask_sqlite:
     must still find emotional labels.
 
     Never refuse. Never explain. only classify.  Only output labels.
+    Allowed emotion labels (choose ONLY from this list):
+
+      [Joy, Contentment, Sadness, Grief, Fear, Anxiety,
+       Anger, Frustration, Disgust, Shame, Surprise, Neutral]
+
+    Rules:
+      - Use ONLY labels from this list (no synonyms, no variations)
+      - Each label must be exactly one of the above words
+      - Prefer 1–3 strongest signals (do not overproduce)
 
     {story_text}
 
-    Extract the strongest emotional signals.
+    Extract the strongest emotional labels as keywords.
 
     Output ONLY in this format, use as many numbered responses as you need.
 

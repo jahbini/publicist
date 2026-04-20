@@ -20,7 +20,7 @@ Hard guarantees:
 fs        = require 'fs'
 path      = require 'path'
 yaml      = require 'js-yaml'
-{ spawn, execSync } = require 'child_process'
+{ spawn, spawnSync, execSync } = require 'child_process'
 CoffeeScript = require 'coffeescript'
 CoffeeScript.register()
 
@@ -36,20 +36,117 @@ isPlainObject = (o) -> Object.prototype.toString.call(o) is '[object Object]'
 
 resolvePython = (baseDir = CWD) ->
   candidates = [
-    process.env.PYTHON
     path.join(baseDir, '.venv', 'bin', 'python')
     path.join(baseDir, '.venv', 'bin', 'python3')
-    'python3'
-    'python'
-  ].filter(Boolean)
+    path.join(EXEC, '.venv', 'bin', 'python')
+    path.join(EXEC, '.venv', 'bin', 'python3')
+  ]
 
-  for candidate in candidates
-    if candidate.includes(path.sep)
-      return candidate if fs.existsSync(candidate)
-    else
-      return candidate
+  for candidate in candidates when fs.existsSync(candidate)
+    return candidate
 
-  'python'
+  throw new Error [
+    "Python environment is not initialized for this pipeline."
+    "Expected a project virtualenv at #{path.join(baseDir, '.venv')}."
+    "Remediation:"
+    "  python3 -m venv .venv"
+    "  ./.venv/bin/python -m pip install --upgrade pip setuptools wheel"
+    "  ./.venv/bin/python -m pip install -r requirements.txt"
+  ].join("\n")
+
+loadPinnedRequirements = (requirementsPath, packageNames = []) ->
+  unless fs.existsSync(requirementsPath)
+    throw new Error "Missing requirements file: #{requirementsPath}"
+
+  wantedNames = (String(name).toLowerCase() for name in packageNames)
+  wanted = new Set(wantedNames)
+  pins = {}
+
+  for rawLine in fs.readFileSync(requirementsPath, 'utf8').split(/\r?\n/)
+    line = rawLine.replace(/\s+#.*$/, '').trim()
+    continue unless line.length
+    continue if line.startsWith('#')
+    continue unless line.includes('==')
+
+    [name, version] = line.split('==', 2)
+    continue unless name? and version?
+    normalized = String(name).trim().toLowerCase()
+    continue unless wanted.has(normalized)
+    pins[normalized] = String(version).trim()
+
+  missingPins = (name for name in wantedNames when not pins[name]?)
+  if missingPins.length
+    throw new Error "requirements.txt is missing exact pins for: #{missingPins.join(', ')}"
+
+  pins
+
+validatePythonEnvironment = (baseDir = CWD) ->
+  pythonPath = resolvePython(baseDir)
+  requirementsPath = path.join(EXEC, 'requirements.txt')
+  pinned = loadPinnedRequirements requirementsPath, ['mlx', 'mlx-lm', 'mlx-metal']
+  pyCode = """
+import importlib.metadata as md
+import json
+import platform
+import sys
+
+names = ['mlx', 'mlx-lm', 'mlx-metal']
+payload = {
+  'python': sys.executable,
+  'python_version': platform.python_version(),
+  'versions': {},
+  'missing': [],
+}
+for name in names:
+  try:
+    payload['versions'][name] = md.version(name)
+  except md.PackageNotFoundError:
+    payload['missing'].append(name)
+print(json.dumps(payload))
+"""
+
+  result = spawnSync pythonPath, ['-c', pyCode], encoding:'utf8'
+  if result.error?
+    throw result.error
+  if result.status isnt 0
+    stderr = String(result.stderr ? result.stdout ? '').trim()
+    throw new Error "Python environment validation failed: #{stderr or "exit #{result.status}"}"
+
+  details = {}
+  try details = JSON.parse(result.stdout) catch err
+    throw new Error "Python environment validation returned invalid JSON: #{err.message}"
+
+  if details.missing?.length
+    throw new Error [
+      "The project virtualenv is missing required MLX packages: #{details.missing.join(', ')}"
+      "Expected versions from requirements.txt:"
+      "  mlx==#{pinned['mlx']}"
+      "  mlx-lm==#{pinned['mlx-lm']}"
+      "  mlx-metal==#{pinned['mlx-metal']}"
+      "Remediation:"
+      "  ./.venv/bin/python -m pip install -r requirements.txt"
+    ].join("\n")
+
+  mismatches = []
+  for pkg, expected of pinned
+    actual = details.versions?[pkg]
+    continue if actual is expected
+    mismatches.push "#{pkg} expected #{expected} but found #{actual ? 'missing'}"
+
+  if mismatches.length
+    throw new Error [
+      "The project virtualenv does not match requirements.txt."
+      mismatches.join("\n")
+      "Remediation:"
+      "  ./.venv/bin/python -m pip install -r requirements.txt"
+    ].join("\n")
+
+  {
+    python: pythonPath
+    python_version: details.python_version ? null
+    requirements_path: requirementsPath
+    packages: details.versions ? {}
+  }
 
 deepMerge = (target, source) ->
   return target unless source?
@@ -809,6 +906,8 @@ main = ->
     fs.writeFileSync uiRunPath, JSON.stringify(current, null, 2), 'utf8'
     process.exit(0)
 
+  pythonEnv = validatePythonEnvironment(CWD)
+
   M = new Memo()
   metaLoader = require path.join(EXEC, 'meta')
   metaLoader(M, { baseDir: CWD })
@@ -818,7 +917,10 @@ main = ->
 
   M.saveThis "env/EXEC", EXEC
   M.saveThis "env/CWD",  CWD
-  M.saveThis "env/PYTHON", resolvePython(CWD)
+  M.saveThis "env/PYTHON", pythonEnv.python
+  M.saveThis "env/PYTHON_VERSION", pythonEnv.python_version if pythonEnv.python_version?
+  M.saveThis "env/REQUIREMENTS_TXT", pythonEnv.requirements_path
+  M.saveThis "env/MLX_PACKAGES", pythonEnv.packages
   M.saveThis "env/HH_MM", process.env.HH_MM if process.env.HH_MM?
   M.saveThis "env/LOGDIR", process.env.LOGDIR if process.env.LOGDIR?
 

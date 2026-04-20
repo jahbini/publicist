@@ -6,10 +6,10 @@ yaml = require 'js-yaml'
 { spawn } = require 'child_process'
 { DatabaseSync } = require 'node:sqlite'
 
-CWD = process.cwd()
+CWD = process.env.CWD ? process.cwd()
 PORT = Number(process.env.UI_PORT ? 4311)
-RUNNER = path.join(CWD, 'pipeline_runner.coffee')
-EXEC_ROOT = path.dirname(RUNNER)
+EXEC_ROOT = process.env.EXEC ? path.dirname(__filename)
+RUNNER = path.join(EXEC_ROOT, 'pipeline_runner.coffee')
 HOST = if process.argv[2] is 'net' then '0.0.0.0' else '127.0.0.1'
 repeatLoop =
   enabled: false
@@ -196,7 +196,7 @@ scanUiFields = (recipe, override, uiControl) ->
 
 readRecipe = (pipeline) ->
   return {} unless typeof pipeline is 'string' and pipeline.length
-  readYaml path.join(CWD, 'config', "#{pipeline}.yaml")
+  readYaml path.join(EXEC_ROOT, 'config', "#{pipeline}.yaml")
 
 pad2 = (n) ->
   text = String(Number(n) ? 0)
@@ -281,7 +281,7 @@ buildControls = ->
   pending = uiControl.pending ? {}
   pipelineName = pending.pipeline ? controlOverride.pipeline ? override.pipeline ? ''
   recipe = readRecipe(pipelineName)
-  libraryDoc = readYaml path.join(CWD, 'data', 'jim_story_library.yaml')
+  libraryDoc = readYaml path.join(EXEC_ROOT, 'data', 'jim_story_library.yaml')
   library = libraryDoc?.library ? {}
   recipeStoryStep = recipe?.select_story_recipe ? {}
   controlStoryStep = controlOverride?.select_story_recipe ? {}
@@ -374,7 +374,7 @@ collectExpectedOutputs = (run) ->
   pipeline = controlOverride.pipeline ? override.pipeline ? run?.pipeline ? null
   return { out_files: [], diary_files: [] } unless pipeline?
 
-  configPath = path.join(CWD, 'config', "#{pipeline}.yaml")
+  configPath = path.join(EXEC_ROOT, 'config', "#{pipeline}.yaml")
   recipe = readYaml(configPath)
   artifacts = recipe?.artifacts ? {}
   runStart = run?.started_at ? null
@@ -676,6 +676,7 @@ startRunner = ->
     stdio: ['ignore', outFd, errFd]
     env: Object.assign {}, process.env,
       EXEC: EXEC_ROOT
+      CWD: CWD
       PWD: CWD
       HH_MM: runTag.hh_mm
       LOGDIR: runTag.logdir
@@ -872,7 +873,7 @@ handleHumanOverride = (req, res) ->
 server = http.createServer (req, res) ->
   url = req.url ? '/'
   if url is '/' or url is '/index.html'
-    return sendHtml res, path.join(CWD, 'ui', 'index.html')
+    return sendHtml res, path.join(EXEC_ROOT, 'ui', 'index.html')
   if url is '/api/status'
     return sendJson res, 200, buildStatus()
   if url.startsWith('/api/file?')

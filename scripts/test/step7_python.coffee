@@ -8,20 +8,14 @@ path = require 'path'
 
 resolvePython = ->
   candidates = [
-    process.env.PYTHON
     path.join(process.cwd(), '.venv', 'bin', 'python')
     path.join(process.cwd(), '.venv', 'bin', 'python3')
-    'python3'
-    'python'
   ].filter(Boolean)
 
-  for candidate in candidates
-    if candidate.includes(path.sep)
-      return candidate if fs.existsSync(candidate)
-    else
-      return candidate
+  for candidate in candidates when fs.existsSync(candidate)
+    return candidate
 
-  'python'
+  throw new Error "Expected project virtualenv at #{path.join(process.cwd(), '.venv')}"
 
 @step =
   name: 'step7_python'

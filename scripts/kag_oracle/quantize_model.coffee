@@ -43,6 +43,53 @@ readConfig = (modelDir) ->
   catch
     null
 
+findWeightFiles = (modelDir) ->
+  return [] unless fs.existsSync(modelDir) and fs.statSync(modelDir).isDirectory()
+  files = listFiles modelDir
+  files.filter (fileName) -> /\.(safetensors|bin)$/.test(fileName)
+
+collectWeightStats = (modelDir) ->
+  weightFiles = findWeightFiles modelDir
+  stats = []
+
+  for relPath in weightFiles
+    absPath = path.join modelDir, relPath
+    try
+      stat = fs.statSync absPath
+      stats.push
+        path: relPath
+        bytes: stat.size
+    catch
+      continue
+
+  stats
+
+isGemma4Multimodal = (config) ->
+  return false unless config? and typeof config is 'object'
+  return true if config.model_type is 'gemma4'
+  archs = if Array.isArray(config.architectures) then config.architectures else []
+  archs.some (name) -> /ConditionalGeneration/i.test(String(name ? ''))
+
+assertQuantizationCompatible = (sourceDir) ->
+  config = readConfig sourceDir
+  weightStats = collectWeightStats sourceDir
+  largestWeight = weightStats.reduce(((best, item) -> if item.bytes > (best?.bytes ? -1) then item else best), null)
+  metalMaxBufferBytes = 4 * 1024 * 1024 * 1024
+
+  if isGemma4Multimodal(config) and largestWeight?.bytes? and largestWeight.bytes > metalMaxBufferBytes
+    gib = (bytes) -> (bytes / (1024 * 1024 * 1024)).toFixed(2)
+    throw new Error [
+      "[quantize_model] source model is not compatible with this pipeline's MLX conversion path."
+      "model_type: #{config.model_type ? 'unknown'}"
+      "architectures: #{(config.architectures ? []).join(', ') or 'unknown'}"
+      "largest weight shard: #{largestWeight.path} (#{gib(largestWeight.bytes)} GiB)"
+      "Metal maximum buffer size on this path is 4.00 GiB, and mlx_lm convert is exceeding it."
+      "This typically happens with multimodal Gemma 4 checkpoints such as google/gemma-4-E2B-it."
+      "Remediation:"
+      "  Use a smaller text-only model for this pipeline."
+      "  Or point the pipeline at a pre-converted MLX model directory instead of converting this HF checkpoint locally."
+    ].join("\n")
+
 inspectQuantizedModelDir = (modelDir, qBitsRequested) ->
   baseState = inspectMLXModelDir modelDir
   return baseState unless baseState.valid
@@ -73,6 +120,7 @@ inspectQuantizedModelDir = (modelDir, qBitsRequested) ->
 
     sourceState = inspectMLXModelDir sourceDir
     throw new Error "[quantize_model] source model invalid at #{sourceDir}: #{sourceState.reason}" unless sourceState.valid
+    assertQuantizationCompatible sourceDir
 
     targetState = inspectQuantizedModelDir targetDir, qBitsRequested
     if targetState.valid
