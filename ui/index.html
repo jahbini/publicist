@@ -694,13 +694,20 @@
       box.checked = controls?.continuous === true;
     }
 
-	    async function refresh() {
-	      const res = await fetch('/api/status', { cache: 'no-store' });
-	      const data = await res.json();
-	      const run = data.run || {};
-	      const mergeRun = data.merge_run || {};
-	      const pipelineState = data.pipeline_state || {};
-	      const pipe = data.pipe || {};
+    async function refresh() {
+      console.debug('[ui] refresh:start');
+      const res = await fetch('/api/status', { cache: 'no-store' });
+      const data = await res.json();
+      const run = data.run || {};
+      const mergeRun = data.merge_run || {};
+      const pipelineState = data.pipeline_state || {};
+      const pipe = data.pipe || {};
+      console.debug('[ui] refresh:status', {
+        activePipe: pipe.current || '',
+        runStatus: run.status || '',
+        mergeStatus: mergeRun.status || '',
+        mergePid: mergeRun.pid || null
+      });
       byId('subtitle').textContent = `${pipe.current || ''}  ${run.pipeline || ''}  ${run.hh_mm || ''}  ${run.logdir || ''}`.trim();
       const status = run.status || 'unknown';
       const statusEl = byId('run-status');
@@ -919,37 +926,18 @@
       }
     }
 
-	    async function switchPipe() {
+    async function switchPipe() {
       const result = byId('launch-result');
       const pipe = byId('pipe-select').value;
+      console.debug('[ui] switchPipe:click', {
+        selectedPipe: pipe || '',
+        currentPipe: currentPipeName || ''
+      });
       if (!pipe) return;
       if (pipe === currentPipeName) {
         result.textContent = `already on pipe ${pipe}`;
         return;
-	    }
-
-	    async function mergePipe() {
-	      const result = byId('merge-result');
-	      try {
-	        const res = await fetch('/api/merge_pipe', {
-	          method: 'POST',
-	          headers: { 'Content-Type': 'application/json' },
-	          body: JSON.stringify({})
-	        });
-	        const data = await res.json();
-	        if (!res.ok || !data.ok) {
-	          throw new Error(data.error || 'merge pipe failed');
-	        }
-	        if (data.attached) {
-	          result.textContent = `merge already running for pid ${data.merge_run?.pid || ''}`;
-	        } else {
-	          result.textContent = `merge started for ${data.merge_run?.pipe || currentPipeName} pid ${data.merge_run?.pid || ''}`;
-	        }
-	        await refresh();
-	      } catch (err) {
-	        result.textContent = String(err.message || err);
-	      }
-	    }
+      }
       try {
         const res = await fetch('/api/switch_pipe', {
           method: 'POST',
@@ -957,6 +945,11 @@
           body: JSON.stringify({ pipe })
         });
         const data = await res.json();
+        console.debug('[ui] switchPipe:response', {
+          ok: !!data?.ok,
+          status: res.status,
+          data
+        });
         if (!res.ok || !data.ok) {
           throw new Error(data.error || 'switch pipe failed');
         }
@@ -964,6 +957,43 @@
         selectedPipeName = pipe;
         window.setTimeout(() => window.location.reload(), 1800);
       } catch (err) {
+        result.textContent = String(err.message || err);
+      }
+    }
+
+    async function mergePipe() {
+      const result = byId('merge-result');
+      console.debug('[ui] mergePipe:click', {
+        activePipe: currentPipeName || '',
+        buttonDisabled: byId('merge-pipe-button').disabled
+      });
+      result.textContent = 'starting merge...';
+      try {
+        const res = await fetch('/api/merge_pipe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const data = await res.json();
+        console.debug('[ui] mergePipe:response', {
+          ok: !!data?.ok,
+          status: res.status,
+          data
+        });
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || 'merge pipe failed');
+        }
+        if (data.attached) {
+          result.textContent = `merge already running for pid ${data.merge_run?.pid || ''}`;
+        } else {
+          result.textContent = `merge started for ${data.merge_run?.pipe || currentPipeName} pid ${data.merge_run?.pid || ''}`;
+        }
+        console.debug('[ui] mergePipe:refresh-after-start');
+        await refresh();
+      } catch (err) {
+        console.debug('[ui] mergePipe:error', {
+          message: String(err?.message || err)
+        });
         result.textContent = String(err.message || err);
       }
     }
