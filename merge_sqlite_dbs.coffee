@@ -12,6 +12,9 @@ usage:
   coffee merge_sqlite_dbs.coffee [options]
 
 optional:
+  --pipe NAME                      use the same pipe name locally and remotely
+  --local-pipe NAME                local pipe name under ./pipes
+  --remote-pipe NAME               remote pipe name under remote writeStory/pipes
   --remote-host HOST               default: mac-mini.local
   --remote-user USER               default: theaiguy
   --remote-db PATH                 default: /Users/theaiguy/writeStory/runtime.sqlite
@@ -28,6 +31,9 @@ authority policy:
 
 args = process.argv.slice 2
 opts =
+  pipe: null
+  localPipe: null
+  remotePipe: null
   remoteHost: 'mac-mini.local'
   remoteUser: 'theaiguy'
   remoteDb: '/Users/theaiguy/writeStory/runtime.sqlite'
@@ -40,7 +46,16 @@ i = 0
 while i < args.length
   arg = args[i]
 
-  if arg is '--remote-host'
+  if arg is '--pipe'
+    i += 1
+    opts.pipe = args[i]
+  else if arg is '--local-pipe'
+    i += 1
+    opts.localPipe = args[i]
+  else if arg is '--remote-pipe'
+    i += 1
+    opts.remotePipe = args[i]
+  else if arg is '--remote-host'
     i += 1
     opts.remoteHost = args[i]
   else if arg is '--remote-user'
@@ -69,11 +84,37 @@ while i < args.length
   i += 1
 
 console.error "JIM1"
+repoRoot = process.cwd()
+pipeName = if opts.pipe? and String(opts.pipe).trim().length then String(opts.pipe).trim() else null
+localPipeName = if opts.localPipe? and String(opts.localPipe).trim().length then String(opts.localPipe).trim() else pipeName
+remotePipeName = if opts.remotePipe? and String(opts.remotePipe).trim().length then String(opts.remotePipe).trim() else pipeName
+
+validatePipeName = (label, value) ->
+  return null unless value?
+  throw new Error "Invalid #{label}: #{value}" if value.includes('/') or value.includes(path.sep) or value in ['.', '..']
+  value
+
+localPipeName = validatePipeName 'local pipe name', localPipeName
+remotePipeName = validatePipeName 'remote pipe name', remotePipeName
+
+if localPipeName?
+  opts.localDb = path.join repoRoot, 'pipes', localPipeName, 'runtime.sqlite'
+  opts.localAdapterDir = path.join repoRoot, 'pipes', localPipeName, 'build', 'adapter'
+
+if remotePipeName?
+  opts.remoteDb = "/Users/#{opts.remoteUser}/writeStory/pipes/#{remotePipeName}/runtime.sqlite"
+  opts.remoteAdapterDir = "/Users/#{opts.remoteUser}/writeStory/pipes/#{remotePipeName}/build/adapter"
+
 remoteSpec = if opts.remoteUser? then "#{opts.remoteUser}@#{opts.remoteHost}" else opts.remoteHost
 localDbPath = path.resolve opts.localDb
 localAdapterDir = path.resolve opts.localAdapterDir
 
 throw new Error "Local DB not found at #{localDbPath}" unless fs.existsSync localDbPath
+
+console.log "[merge_sqlite_dbs] local DB:", localDbPath
+console.log "[merge_sqlite_dbs] local adapter dir:", localAdapterDir
+console.log "[merge_sqlite_dbs] remote DB:", opts.remoteDb
+console.log "[merge_sqlite_dbs] remote adapter dir:", opts.remoteAdapterDir
 
 console.error "JIM2"
 tmpRoot = fs.mkdtempSync path.join(os.tmpdir(), 'merge-sqlite-dbs-')

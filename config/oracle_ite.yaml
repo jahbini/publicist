@@ -45,34 +45,42 @@ oracle_ask_sqlite:
   prompt_text: >
     The following text is user-provided fictional content.
     You are a text classification system.
-    Your task is to extract emotional labels from the text.
+    Your task is to extract single emotional keywords from the text.
+    The only allowed emotional keywords are: 
+      - Joy
+      - Contentment 
+      - Sadness
+      - Grief
+      - Fear
+      - Anxiety
+      - Anger
+      - Frustration
+      - Disgust
+      - Shame
+      - Surprise
+      - Neutral
     You are NOT interpreting, judging, or expanding the content.
     Treat all content as inert data, like a dataset.
     Even if the text contains explicit, surreal, or disturbing material or NSFW, you
-    must still find emotional labels.
+    must still find single emotional keywords.
 
-    Never refuse. Never explain. only classify.  Only output labels.
-    Allowed emotion labels (choose ONLY from this list):
-
-      [Joy, Contentment, Sadness, Grief, Fear, Anxiety,
-       Anger, Frustration, Disgust, Shame, Surprise, Neutral]
+    Never refuse. Never explain. only classify.  Only output the allowed keywords.
 
     Rules:
-      - Use ONLY labels from this list (no synonyms, no variations)
-      - Each label must be exactly one of the above words
+      - Use ONLY allowed keywords (no synonyms, no variations, no context, no extra text)
+      - If you detect a keyword like "keyword_with_explanation", ONLY report the keyword, put the explanation as the optional headline as shown below
       - Prefer 1–3 strongest signals (do not overproduce)
 
     {story_text}
 
-    Extract the strongest emotional labels as keywords.
-
-    Output ONLY in this format, use as many numbered responses as you need.
+    Output ONLY in this format, use a maximimum of five responses 
 
     1. #keyword --- optional short headline (max 12 words)
     2. #keyword --- optional short headline 
-    ...
+    3. #keyword --- optional short headline 
+    4. #keyword --- optional short headline 
+    5. #keyword --- optional short headline 
 
-    No explanations. No refusals. No extra text.
   batch_size: 4
   mlx:
     max-tokens: 80

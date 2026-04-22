@@ -2,7 +2,36 @@ cleanFragment = (value) ->
   text = String(value ? '').trim()
   text = text.replace /^\*+|\*+$/g, ''
   text = text.replace /^["'“”]+|["'“”]+$/g, ''
+  text = text.replace /\bend_assistant_\d+\b/ig, ''
+  text = text.replace /\bassistant_\d+\b/ig, ''
+  text = text.replace /_+/g, '_'
   text.trim()
+
+ALLOWED_EMOTION_KEYWORDS = new Set [
+  'joy'
+  'contentment'
+  'sadness'
+  'grief'
+  'fear'
+  'anxiety'
+  'anger'
+  'frustration'
+  'disgust'
+  'shame'
+  'surprise'
+  'neutral'
+]
+
+normalizeAllowedEmotionKeyword = (value) ->
+  text = cleanFragment(value).toLowerCase()
+  text = text.replace /^#/, ''
+  text = text.replace /[^a-z0-9]+/g, '_'
+  text = text.replace /^_+|_+$/g, ''
+  return null unless text.length
+  return text if ALLOWED_EMOTION_KEYWORDS.has(text)
+  match = text.match /^(joy|contentment|sadness|grief|fear|anxiety|anger|frustration|disgust|shame|surprise|neutral)(?:_|$)/
+  return match[1] if match?
+  null
 
 toEmotionKey = (value, fallbackIndex) ->
   text = cleanFragment(value).toLowerCase()
@@ -82,11 +111,11 @@ filterEmotions = (emotions) ->
   seenValues = new Set()
 
   for own key, value of emotions
-    emotionKey = toEmotionKey key, Object.keys(filtered).length + 1
+    emotionKey = normalizeAllowedEmotionKeyword(key) ? normalizeAllowedEmotionKeyword(value)
+    continue unless emotionKey?
     emotionText = cleanFragment value
     continue unless emotionText.length
     continue if rejectPatterns.some (pattern) -> pattern.test(emotionKey) or pattern.test(emotionText)
-    continue if /^emotion_\d+$/.test(emotionKey) and /^(disturbing|amused|nostalgic|speculative|serene|joyous|blissful|melancholic|absurd)$/i.test(emotionText)
     dedupeKey = "#{emotionKey}|#{emotionText.toLowerCase()}"
     continue if seenValues.has dedupeKey
     seenValues.add dedupeKey

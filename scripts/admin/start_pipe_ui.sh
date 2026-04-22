@@ -15,6 +15,20 @@ info() {
   echo "[start_pipe_ui] $*"
 }
 
+pipe_name_for_model() {
+  local model_name="$1"
+  local normalized
+
+  normalized="${model_name//\//_}"
+  normalized="${normalized// /_}"
+  printf '%s\n' "$normalized"
+}
+
+legacy_pipe_name_for_model() {
+  local model_name="$1"
+  printf '%s\n' "${model_name##*/}"
+}
+
 ensure_parent_dir() {
   local target="$1"
   mkdir -p "$(dirname "$target")"
@@ -43,9 +57,11 @@ resolve_coffee_bin() {
 }
 
 [[ -n "$MODEL_NAME" ]] || die "Usage: $(basename "$0") <model-name>"
-PIPE_NAME="${MODEL_NAME##*/}"
+PIPE_NAME="$(pipe_name_for_model "$MODEL_NAME")"
 [[ -n "$PIPE_NAME" ]] || die "Could not derive pipe directory name from model name: $MODEL_NAME"
 PIPE_DIR="$ROOT_DIR/pipes/$PIPE_NAME"
+LEGACY_PIPE_NAME="$(legacy_pipe_name_for_model "$MODEL_NAME")"
+LEGACY_PIPE_DIR="$ROOT_DIR/pipes/$LEGACY_PIPE_NAME"
 mkdir -p "$PIPE_DIR"
 mkdir -p "$PIPE_DIR/logs" "$PIPE_DIR/state"
 
@@ -57,6 +73,10 @@ UI_PORT_VALUE="${UI_PORT:-4311}"
 info "Workspace: $PIPE_DIR"
 info "Model: $MODEL_NAME"
 info "Pipe name: $PIPE_NAME"
+if [[ "$LEGACY_PIPE_NAME" != "$PIPE_NAME" && -d "$LEGACY_PIPE_DIR" && ! -d "$PIPE_DIR/build" ]]; then
+  info "Legacy tail-only pipe also exists: $LEGACY_PIPE_DIR"
+  info "New launches now use organization-qualified pipe names."
+fi
 info "UI port: $UI_PORT_VALUE"
 info "Starting UI server"
 

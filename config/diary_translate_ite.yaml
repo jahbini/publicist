@@ -88,7 +88,7 @@ generate_diary_without_adapter_ite:
 
 translate_diary_with_adapter_ite:
   run: diary_ite/translate_diary_with_adapter_ite.coffee
-  depends_on: [generate_diary_without_adapter_ite]
+  depends_on: [never]
   needs: [story_parts, diary_base_text]
   makes: [diary_adapted_raw, diary_adapted_meta, diary_adapted_text]
   adapter_path: build/adapter

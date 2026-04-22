@@ -77,7 +77,7 @@ build_diary_prompt_ite:
 
 generate_diary_with_adapter_ite:
   run: diary_ite/generate_diary_event_ordered_ite.coffee
-  depends_on: [build_diary_prompt_ite]
+  depends_on: [never]
   needs: [story_parts, diary_prompt_text]
   makes: [diary_adapted_raw, diary_adapted_meta, diary_adapted_text]
   adapter_path: build/adapter

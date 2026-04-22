@@ -195,9 +195,28 @@
       opacity: 0.6;
       cursor: wait;
     }
+    .danger-button {
+      background: var(--bad) !important;
+    }
     .hint {
       font-size: 13px;
       color: var(--muted);
+    }
+    .death-box {
+      border: 1px solid #d5a1a8;
+      background: #fff1f3;
+      border-radius: 12px;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .death-box.hidden {
+      display: none;
+    }
+    .button-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
     }
     .file {
       display: flex;
@@ -268,19 +287,34 @@
       <div id="run-status" class="status">unknown</div>
     </div>
 
-    <div class="grid">
-      <section class="panel">
-        <h2>Run</h2>
-        <div id="run-kv" class="kv"></div>
-      </section>
+	    <div class="grid">
+	      <section class="panel">
+	        <h2>Run</h2>
+	        <div id="run-kv" class="kv"></div>
+	      </section>
 
-      <section class="panel">
-        <h2>Controls</h2>
-        <div class="controls">
-          <label>
-            Pipeline
-            <select id="pipeline-select"></select>
-          </label>
+	      <section class="panel">
+	        <h2>Pipe</h2>
+	        <div class="controls">
+	          <div id="pipe-current" class="mono"></div>
+	          <label>
+	            Switch UI To Pipe
+	            <select id="pipe-select"></select>
+	          </label>
+	          <button id="switch-pipe-button" type="button">Switch Pipe UI</button>
+	          <button id="merge-pipe-button" type="button">Merge Adapter And SQLite From Other Machine</button>
+	          <div id="merge-result" class="hint mono"></div>
+	          <div id="merge-status" class="hint mono"></div>
+	        </div>
+	      </section>
+
+	      <section class="panel">
+	        <h2>Controls</h2>
+	        <div class="controls">
+	          <label>
+	            Pipeline
+	            <select id="pipeline-select"></select>
+	          </label>
           <div>
             <div class="hint" style="margin-bottom:6px;">Recipe UI Fields</div>
             <div id="ui-fields" class="controls"></div>
@@ -293,6 +327,17 @@
           <button id="kill-button" type="button">Kill Run</button>
           <div id="launch-result" class="hint mono"></div>
         </div>
+      </section>
+
+      <section class="panel">
+        <h2>Pipeline Death</h2>
+        <div id="pipeline-death-box" class="death-box hidden">
+          <div id="pipeline-death-text" class="mono"></div>
+          <div class="button-row">
+            <button id="clear-pipeline-state-button" class="danger-button" type="button">Erase pipeline.json</button>
+          </div>
+        </div>
+        <div id="pipeline-death-empty" class="hint mono">no pipeline.json death message</div>
       </section>
 
       <section class="panel">
@@ -384,6 +429,8 @@
     let controlOverrideInitialized = false;
     let controlSaveTimer = null;
     let humanSaveTimer = null;
+    let currentPipeName = '';
+    let selectedPipeName = '';
 
     function uiEditorHasFocus() {
       const active = document.activeElement;
@@ -485,6 +532,81 @@
       controlsInitialized = true;
     }
 
+	    function renderPipeControls(pipe) {
+	      const pipeSelect = byId('pipe-select');
+	      const switchButton = byId('switch-pipe-button');
+	      const pipes = pipe?.pipes || [];
+	      const current = pipe?.current || '';
+      const availableNames = pipes.map((row) => row.name);
+      let desired = selectedPipeName || pipeSelect.value || current;
+      if (!availableNames.includes(desired)) desired = current;
+	      currentPipeName = current;
+	      byId('pipe-current').textContent = current ? `active: ${current}` : 'active: (not in pipes)';
+	      pipeSelect.innerHTML = pipes.map((row) => `
+	        <option value="${row.name}" ${row.name === desired ? 'selected' : ''}>${row.name}${row.is_active ? ' (active)' : ''}</option>
+	      `).join('');
+      pipeSelect.value = desired;
+      selectedPipeName = desired;
+	      pipeSelect.disabled = pipes.length === 0;
+	      switchButton.disabled = pipes.length === 0 || !desired || desired === current;
+	    }
+
+	    function renderMergeStatus(mergeRun) {
+	      const button = byId('merge-pipe-button');
+	      const target = byId('merge-status');
+	      const activePipe = currentPipeName || '';
+	      const status = mergeRun?.status || '';
+	      const logdir = mergeRun?.logdir || '';
+	      const pid = mergeRun?.pid || '';
+	      const logPath = mergeRun?.log_path || '';
+	      const errPath = mergeRun?.err_path || '';
+	      button.disabled = !activePipe || status === 'running' || status === 'launching';
+
+	      if (!activePipe) {
+	        target.textContent = 'merge unavailable: current workspace is not under pipes/';
+	        return;
+	      }
+
+	      if (!status) {
+	        target.textContent = `ready to merge remote adapter and sqlite into ${activePipe}`;
+	        return;
+	      }
+
+	      target.textContent = [
+	        `merge status: ${status}`,
+	        `pipe: ${mergeRun?.pipe || activePipe}`,
+	        `pid: ${pid}`,
+	        `logdir: ${logdir}`,
+	        `log: ${logPath}`,
+	        `err: ${errPath}`,
+	        `started: ${formatLocalTime(mergeRun?.started_at || '')}`,
+	        `finished: ${formatLocalTime(mergeRun?.finished_at || '')}`
+	      ].join('\n');
+	    }
+
+    function renderPipelineDeath(pipelineState) {
+      const box = byId('pipeline-death-box');
+      const empty = byId('pipeline-death-empty');
+      const text = byId('pipeline-death-text');
+      const clearButton = byId('clear-pipeline-state-button');
+      if (!pipelineState || !pipelineState.status) {
+        box.classList.add('hidden');
+        empty.style.display = 'block';
+        text.textContent = '';
+        clearButton.disabled = true;
+        return;
+      }
+      box.classList.remove('hidden');
+      empty.style.display = 'none';
+      clearButton.disabled = false;
+      text.textContent = [
+        `status: ${pipelineState.status || ''}`,
+        `by: ${pipelineState.by || ''}`,
+        `reason: ${pipelineState.reason || ''}`,
+        `timestamp: ${formatLocalTime(pipelineState.timestamp || '')}`
+      ].join('\n');
+    }
+
     function collectUiValues() {
       const rows = {};
       document.querySelectorAll('.ui-checkbox').forEach((node) => {
@@ -535,10 +657,15 @@
       const button = byId('kill-button');
       const pid = run?.pid;
       const status = run?.status || '';
-      const blocking = Array.isArray(run?.other_runners) && run.other_runners.length > 0
-        ? String(run.other_runners[0]).match(/^\s*(\d+)\b/)
+      const firstBlocking = Array.isArray(run?.other_runners) && run.other_runners.length > 0
+        ? run.other_runners[0]
         : null;
-      const blockingPid = blocking ? blocking[1] : null;
+      const blockingMatch = firstBlocking && typeof firstBlocking === 'object'
+        ? null
+        : String(firstBlocking || '').match(/^\s*(\d+)\b/);
+      const blockingPid = firstBlocking && typeof firstBlocking?.pid === 'number'
+        ? firstBlocking.pid
+        : (blockingMatch ? blockingMatch[1] : null);
       const killable = Number.isInteger(Number(pid)) && !['done', 'failed', 'shutdown'].includes(status);
 
       if (status === 'skipped' && blockingPid) {
@@ -567,12 +694,14 @@
       box.checked = controls?.continuous === true;
     }
 
-    async function refresh() {
-      const res = await fetch('/api/status', { cache: 'no-store' });
-      const data = await res.json();
-      const run = data.run || {};
-      const pipelineState = data.pipeline_state || {};
-      byId('subtitle').textContent = `${run.pipeline || ''}  ${run.hh_mm || ''}  ${run.logdir || ''}`.trim();
+	    async function refresh() {
+	      const res = await fetch('/api/status', { cache: 'no-store' });
+	      const data = await res.json();
+	      const run = data.run || {};
+	      const mergeRun = data.merge_run || {};
+	      const pipelineState = data.pipeline_state || {};
+	      const pipe = data.pipe || {};
+      byId('subtitle').textContent = `${pipe.current || ''}  ${run.pipeline || ''}  ${run.hh_mm || ''}  ${run.logdir || ''}`.trim();
       const status = run.status || 'unknown';
       const statusEl = byId('run-status');
       statusEl.textContent = status;
@@ -580,6 +709,7 @@
 
       renderKV(byId('run-kv'), [
         ['pipeline', run.pipeline],
+        ['pipe', pipe.current || ''],
         ['status', run.status],
         ['pid', run.pid],
         ['cwd', run.cwd],
@@ -594,7 +724,10 @@
         ['latest log', data.latest_log_stem]
       ]);
 
-      renderKillButton(run);
+	      renderKillButton(run);
+	      renderPipeControls(pipe);
+	      renderMergeStatus(mergeRun);
+	      renderPipelineDeath(pipelineState);
       renderContinuous(data.controls || {});
       renderControls(data.controls || {});
       renderOverrideEditor(data.controls || {});
@@ -768,6 +901,73 @@
       }
     }
 
+    async function clearPipelineState() {
+      const result = byId('launch-result');
+      try {
+        const res = await fetch('/api/clear_pipeline_state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || 'clear pipeline state failed');
+        }
+        result.textContent = data.removed ? 'pipeline.json erased' : 'no pipeline.json present';
+        await refresh();
+      } catch (err) {
+        result.textContent = String(err.message || err);
+      }
+    }
+
+	    async function switchPipe() {
+      const result = byId('launch-result');
+      const pipe = byId('pipe-select').value;
+      if (!pipe) return;
+      if (pipe === currentPipeName) {
+        result.textContent = `already on pipe ${pipe}`;
+        return;
+	    }
+
+	    async function mergePipe() {
+	      const result = byId('merge-result');
+	      try {
+	        const res = await fetch('/api/merge_pipe', {
+	          method: 'POST',
+	          headers: { 'Content-Type': 'application/json' },
+	          body: JSON.stringify({})
+	        });
+	        const data = await res.json();
+	        if (!res.ok || !data.ok) {
+	          throw new Error(data.error || 'merge pipe failed');
+	        }
+	        if (data.attached) {
+	          result.textContent = `merge already running for pid ${data.merge_run?.pid || ''}`;
+	        } else {
+	          result.textContent = `merge started for ${data.merge_run?.pipe || currentPipeName} pid ${data.merge_run?.pid || ''}`;
+	        }
+	        await refresh();
+	      } catch (err) {
+	        result.textContent = String(err.message || err);
+	      }
+	    }
+      try {
+        const res = await fetch('/api/switch_pipe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pipe })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || 'switch pipe failed');
+        }
+        result.textContent = `switching UI to pipe ${pipe}...`;
+        selectedPipeName = pipe;
+        window.setTimeout(() => window.location.reload(), 1800);
+      } catch (err) {
+        result.textContent = String(err.message || err);
+      }
+    }
+
     refresh().catch(console.error);
     setInterval(() => refresh().catch(console.error), 2000);
     byId('pipeline-select').addEventListener('change', () => {
@@ -801,7 +1001,20 @@
     byId('kill-button').addEventListener('click', () => {
       killPipeline().catch(console.error);
     });
-    byId('file-modal-close').addEventListener('click', closeFileModal);
+    byId('clear-pipeline-state-button').addEventListener('click', () => {
+      clearPipelineState().catch(console.error);
+    });
+	    byId('switch-pipe-button').addEventListener('click', () => {
+	      switchPipe().catch(console.error);
+	    });
+	    byId('pipe-select').addEventListener('change', (event) => {
+	      selectedPipeName = event.target.value || '';
+	      byId('switch-pipe-button').disabled = !selectedPipeName || selectedPipeName === currentPipeName;
+	    });
+	    byId('merge-pipe-button').addEventListener('click', () => {
+	      mergePipe().catch(console.error);
+	    });
+	    byId('file-modal-close').addEventListener('click', closeFileModal);
     byId('file-modal-shell').addEventListener('click', (event) => {
       if (event.target === byId('file-modal-shell')) closeFileModal();
     });

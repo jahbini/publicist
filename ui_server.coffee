@@ -10,6 +10,7 @@ CWD = process.env.CWD ? process.cwd()
 PORT = Number(process.env.UI_PORT ? 4311)
 EXEC_ROOT = process.env.EXEC ? path.dirname(__filename)
 RUNNER = path.join(EXEC_ROOT, 'pipeline_runner.coffee')
+MERGE_SCRIPT = path.join(EXEC_ROOT, 'merge_sqlite_dbs.coffee')
 HOST = if process.argv[2] is 'net' then '0.0.0.0' else '127.0.0.1'
 repeatLoop =
   enabled: false
@@ -19,6 +20,7 @@ repeatLoop =
 UI_CONTROL_PATH = path.join(CWD, 'state', 'ui-control.json')
 CONTROL_OVERRIDE_PATH = path.join(CWD, 'control_override.yaml')
 OVERRIDE_PATH = path.join(CWD, 'override.yaml')
+MERGE_RUN_PATH = path.join(CWD, 'state', 'merge-run.json')
 
 readJson = (p, fallback = null) ->
   return fallback unless fs.existsSync(p)
@@ -31,6 +33,8 @@ readText = (p, fallback = '') ->
 writeText = (p, text) ->
   fs.mkdirSync path.dirname(p), { recursive: true }
   fs.writeFileSync p, text, 'utf8'
+
+PIPES_ROOT = path.join(EXEC_ROOT, 'pipes')
 
 isProcessAlive = (pid) ->
   num = Number(pid)
@@ -56,6 +60,53 @@ normalizeUiRun = (run) ->
   current.is_attached = false
   current.is_process_alive = alive
   current
+
+normalizeMergeRun = (run) ->
+  current = if run? and typeof run is 'object' and not Array.isArray(run) then Object.assign({}, run) else {}
+  pid = Number(current.pid ? 0)
+  alive = isProcessAlive(pid)
+
+  if alive and current.status in ['launching', 'running']
+    current.status = 'running'
+    current.pid = pid
+    current.is_process_alive = true
+    return current
+
+  current.is_process_alive = alive
+  current
+
+readMergeRun = ->
+  normalizeMergeRun readJson(MERGE_RUN_PATH, {})
+
+resolveCoffeeBin = ->
+  localCoffee = path.join(EXEC_ROOT, 'node_modules', '.bin', 'coffee')
+  return localCoffee if fs.existsSync(localCoffee)
+  'coffee'
+
+workspacePipeName = (workspacePath = CWD) ->
+  rel = path.relative(PIPES_ROOT, workspacePath)
+  return null if not rel? or rel.startsWith('..') or path.isAbsolute(rel) or rel is ''
+  rel.split(path.sep)[0] ? null
+
+listPipeDirectories = ->
+  return [] unless fs.existsSync(PIPES_ROOT)
+  names = fs.readdirSync(PIPES_ROOT).filter (name) ->
+    full = path.join(PIPES_ROOT, name)
+    try
+      fs.statSync(full).isDirectory()
+    catch
+      false
+  names.sort (a, b) -> String(a).localeCompare String(b)
+
+buildPipeSummary = ->
+  current = workspacePipeName(CWD)
+  pipes = (name: name, is_active: name is current for name in listPipeDirectories())
+  {
+    root: PIPES_ROOT
+    current: current
+    workspace: CWD
+    pipes: pipes
+  }
 
 writeUiRunPatch = (patch) ->
   runPath = path.join(CWD, 'state', 'ui-run.json')
@@ -436,8 +487,10 @@ collectExpectedOutputs = (run) ->
 
 buildStatus = ->
   run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  mergeRun = readMergeRun()
   pipelineState = readJson path.join(CWD, 'pipeline.json'), null
   expectedOutputs = collectExpectedOutputs(run)
+  pipeSummary = buildPipeSummary()
   loraRemaining = readJson path.join(CWD, 'out', 'lora_remaining_count.json'), null
   oracleRemaining = readJson path.join(CWD, 'out', 'oracle_remaining_count.json'), null
   storiesRemaining = if oracleRemaining? then oracleRemaining else loraRemaining
@@ -449,7 +502,9 @@ buildStatus = ->
 
   {
     run: run
+    merge_run: mergeRun
     pipeline_state: pipelineState
+    pipe: pipeSummary
     lora_remaining_count: loraRemaining
     oracle_remaining_count: oracleRemaining
     stories_remaining_count: storiesRemaining
@@ -556,6 +611,19 @@ markUiRunExited = (launch, patch = {}) ->
   , patch
 
   writeText runPath, JSON.stringify(next, null, 2)
+
+markMergeRunExited = (launch, patch = {}) ->
+  current = readJson(MERGE_RUN_PATH, {})
+  return unless current? and typeof current is 'object' and not Array.isArray(current)
+  return unless current.pid is launch.pid
+  return unless current.status in ['launching', 'running']
+
+  next = Object.assign {}, current,
+    status: patch.status ? 'exited'
+    finished_at: patch.finished_at ? new Date().toISOString()
+  , patch
+
+  writeText MERGE_RUN_PATH, JSON.stringify(next, null, 2)
 
 stopRepeatLoop = ->
   if repeatLoop.timer?
@@ -749,6 +817,60 @@ startRunner = ->
     logdir: runTag.logdir
   }
 
+startMerge = (pipeName) ->
+  stamp = buildRunTag()
+  logDir = path.join(CWD, 'logs')
+  fs.mkdirSync logDir, { recursive: true }
+  logStem = "merge_#{stamp.hh_mm}"
+  logPath = path.join(logDir, "#{logStem}.log")
+  errPath = path.join(logDir, "#{logStem}.err")
+  fs.writeFileSync logPath, '', 'utf8'
+  fs.writeFileSync errPath, '', 'utf8'
+  outFd = fs.openSync logPath, 'a'
+  errFd = fs.openSync errPath, 'a'
+
+  child = spawn resolveCoffeeBin(), [MERGE_SCRIPT, '--pipe', pipeName],
+    cwd: EXEC_ROOT
+    detached: true
+    stdio: ['ignore', outFd, errFd]
+    env: Object.assign {}, process.env,
+      EXEC: EXEC_ROOT
+      CWD: CWD
+      PWD: EXEC_ROOT
+
+  payload =
+    pipe: pipeName
+    pid: child.pid
+    status: 'launching'
+    started_at: new Date().toISOString()
+    finished_at: null
+    logdir: logStem
+    log_path: path.relative(CWD, logPath)
+    err_path: path.relative(CWD, errPath)
+
+  writeText MERGE_RUN_PATH, JSON.stringify(payload, null, 2)
+
+  child.unref()
+  child.on 'error', (err) ->
+    markMergeRunExited {
+      pid: child.pid
+      logdir: logStem
+    },
+      status: 'failed'
+      error: String(err?.message ? err)
+
+  child.on 'exit', (code, signal) ->
+    status = if code is 0 then 'done' else 'failed'
+    markMergeRunExited {
+      pid: child.pid
+      logdir: logStem
+    },
+      status: status
+      exit_code: code
+      signal: signal ? null
+
+  payload
+
 handleLaunch = (req, res) ->
   bodyText = await readRequestBody req
   payload = {}
@@ -922,6 +1044,78 @@ handleHumanOverride = (req, res) ->
     ok: true
     override: override
 
+handleClearPipelineState = (req, res) ->
+  pipelinePath = path.join(CWD, 'pipeline.json')
+  removed = false
+  if fs.existsSync(pipelinePath)
+    fs.unlinkSync pipelinePath
+    removed = true
+
+  sendJson res, 200,
+    ok: true
+    removed: removed
+
+handleSwitchPipe = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  pipeName = String(payload.pipe ? '').trim()
+  return sendJson(res, 400, { ok: false, error: 'pipe is required' }) unless pipeName.length
+  return sendJson(res, 400, { ok: false, error: 'invalid pipe name' }) if pipeName.includes('/') or pipeName.includes(path.sep) or pipeName is '.' or pipeName is '..'
+
+  targetCwd = path.join(PIPES_ROOT, pipeName)
+  return sendJson(res, 404, { ok: false, error: 'pipe directory not found' }) unless fs.existsSync(targetCwd) and fs.statSync(targetCwd).isDirectory()
+  return sendJson(res, 200, { ok: true, pipe: pipeName, cwd: targetCwd, unchanged: true }) if path.resolve(targetCwd) is path.resolve(CWD)
+
+  fs.mkdirSync path.join(targetCwd, 'state'), { recursive: true }
+  fs.mkdirSync path.join(targetCwd, 'logs'), { recursive: true }
+
+  sendJson res, 200,
+    ok: true
+    pipe: pipeName
+    cwd: targetCwd
+    restarting: true
+
+  launchArgs = ['-lc', "sleep 1; exec coffee #{JSON.stringify(path.join(EXEC_ROOT, 'ui_server.coffee'))}"]
+  child = spawn 'bash', launchArgs,
+    cwd: targetCwd
+    detached: true
+    stdio: 'ignore'
+    env: Object.assign {}, process.env,
+      EXEC: EXEC_ROOT
+      CWD: targetCwd
+      UI_PORT: String(PORT)
+
+  child.unref()
+  setTimeout((-> process.exit(0)), 150)
+
+handleMergePipe = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  pipeName = workspacePipeName(CWD)
+  return sendJson(res, 400, { ok: false, error: 'current workspace is not under pipes/' }) unless pipeName?
+
+  mergeRun = readMergeRun()
+  if mergeRun.is_process_alive is true and Number(mergeRun.pid ? 0) > 0 and mergeRun.status in ['launching', 'running']
+    return sendJson res, 200,
+      ok: true
+      attached: true
+      merge_run: mergeRun
+
+  launch = startMerge pipeName
+  sendJson res, 200,
+    ok: true
+    merge_run: launch
+
 server = http.createServer (req, res) ->
   url = req.url ? '/'
   if url is '/' or url is '/index.html'
@@ -946,6 +1140,21 @@ server = http.createServer (req, res) ->
         error: String(err?.message ? err)
   if url is '/api/human_override' and req.method is 'POST'
     return Promise.resolve(handleHumanOverride(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/clear_pipeline_state' and req.method is 'POST'
+    return Promise.resolve(handleClearPipelineState(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/switch_pipe' and req.method is 'POST'
+    return Promise.resolve(handleSwitchPipe(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/merge_pipe' and req.method is 'POST'
+    return Promise.resolve(handleMergePipe(req, res)).catch (err) ->
       sendJson res, 500,
         ok: false
         error: String(err?.message ? err)
