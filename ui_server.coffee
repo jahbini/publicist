@@ -8,7 +8,8 @@ yaml = require 'js-yaml'
 
 CWD = process.env.CWD ? process.cwd()
 PORT = Number(process.env.UI_PORT ? 4311)
-HOST = if process.argv[2] is 'net' then '0.0.0.0' else '127.0.0.1'
+UI_BIND_MODE = String(process.env.UI_BIND_MODE ? (if process.argv[2] is 'net' then 'net' else 'local'))
+HOST = if UI_BIND_MODE is 'net' then '0.0.0.0' else '127.0.0.1'
 repeatLoop =
   enabled: false
   payload: null
@@ -1124,6 +1125,7 @@ handleSwitchPipe = (req, res) ->
       EXEC: EXEC_ROOT
       CWD: targetCwd
       UI_PORT: String(PORT)
+      UI_BIND_MODE: UI_BIND_MODE
 
   child.unref()
   setTimeout((-> process.exit(0)), 150)
