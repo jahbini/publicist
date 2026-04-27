@@ -20,7 +20,7 @@ Hard guarantees:
 fs        = require 'fs'
 path      = require 'path'
 yaml      = require 'js-yaml'
-{ spawn, execSync } = require 'child_process'
+{ spawn, spawnSync, execSync } = require 'child_process'
 CoffeeScript = require 'coffeescript'
 CoffeeScript.register()
 
@@ -36,20 +36,117 @@ isPlainObject = (o) -> Object.prototype.toString.call(o) is '[object Object]'
 
 resolvePython = (baseDir = CWD) ->
   candidates = [
-    process.env.PYTHON
     path.join(baseDir, '.venv', 'bin', 'python')
     path.join(baseDir, '.venv', 'bin', 'python3')
-    'python3'
-    'python'
-  ].filter(Boolean)
+    path.join(EXEC, '.venv', 'bin', 'python')
+    path.join(EXEC, '.venv', 'bin', 'python3')
+  ]
 
-  for candidate in candidates
-    if candidate.includes(path.sep)
-      return candidate if fs.existsSync(candidate)
-    else
-      return candidate
+  for candidate in candidates when fs.existsSync(candidate)
+    return candidate
 
-  'python'
+  throw new Error [
+    "Python environment is not initialized for this pipeline."
+    "Expected a project virtualenv at #{path.join(baseDir, '.venv')}."
+    "Remediation:"
+    "  python3 -m venv .venv"
+    "  ./.venv/bin/python -m pip install --upgrade pip setuptools wheel"
+    "  ./.venv/bin/python -m pip install -r requirements.txt"
+  ].join("\n")
+
+loadPinnedRequirements = (requirementsPath, packageNames = []) ->
+  unless fs.existsSync(requirementsPath)
+    throw new Error "Missing requirements file: #{requirementsPath}"
+
+  wantedNames = (String(name).toLowerCase() for name in packageNames)
+  wanted = new Set(wantedNames)
+  pins = {}
+
+  for rawLine in fs.readFileSync(requirementsPath, 'utf8').split(/\r?\n/)
+    line = rawLine.replace(/\s+#.*$/, '').trim()
+    continue unless line.length
+    continue if line.startsWith('#')
+    continue unless line.includes('==')
+
+    [name, version] = line.split('==', 2)
+    continue unless name? and version?
+    normalized = String(name).trim().toLowerCase()
+    continue unless wanted.has(normalized)
+    pins[normalized] = String(version).trim()
+
+  missingPins = (name for name in wantedNames when not pins[name]?)
+  if missingPins.length
+    throw new Error "requirements.txt is missing exact pins for: #{missingPins.join(', ')}"
+
+  pins
+
+validatePythonEnvironment = (baseDir = CWD) ->
+  pythonPath = resolvePython(baseDir)
+  requirementsPath = path.join(EXEC, 'requirements.txt')
+  pinned = loadPinnedRequirements requirementsPath, ['mlx', 'mlx-lm', 'mlx-metal']
+  pyCode = """
+import importlib.metadata as md
+import json
+import platform
+import sys
+
+names = ['mlx', 'mlx-lm', 'mlx-metal']
+payload = {
+  'python': sys.executable,
+  'python_version': platform.python_version(),
+  'versions': {},
+  'missing': [],
+}
+for name in names:
+  try:
+    payload['versions'][name] = md.version(name)
+  except md.PackageNotFoundError:
+    payload['missing'].append(name)
+print(json.dumps(payload))
+"""
+
+  result = spawnSync pythonPath, ['-c', pyCode], encoding:'utf8'
+  if result.error?
+    throw result.error
+  if result.status isnt 0
+    stderr = String(result.stderr ? result.stdout ? '').trim()
+    throw new Error "Python environment validation failed: #{stderr or "exit #{result.status}"}"
+
+  details = {}
+  try details = JSON.parse(result.stdout) catch err
+    throw new Error "Python environment validation returned invalid JSON: #{err.message}"
+
+  if details.missing?.length
+    throw new Error [
+      "The project virtualenv is missing required MLX packages: #{details.missing.join(', ')}"
+      "Expected versions from requirements.txt:"
+      "  mlx==#{pinned['mlx']}"
+      "  mlx-lm==#{pinned['mlx-lm']}"
+      "  mlx-metal==#{pinned['mlx-metal']}"
+      "Remediation:"
+      "  ./.venv/bin/python -m pip install -r requirements.txt"
+    ].join("\n")
+
+  mismatches = []
+  for pkg, expected of pinned
+    actual = details.versions?[pkg]
+    continue if actual is expected
+    mismatches.push "#{pkg} expected #{expected} but found #{actual ? 'missing'}"
+
+  if mismatches.length
+    throw new Error [
+      "The project virtualenv does not match requirements.txt."
+      mismatches.join("\n")
+      "Remediation:"
+      "  ./.venv/bin/python -m pip install -r requirements.txt"
+    ].join("\n")
+
+  {
+    python: pythonPath
+    python_version: details.python_version ? null
+    requirements_path: requirementsPath
+    packages: details.versions ? {}
+  }
 
 deepMerge = (target, source) ->
   return target unless source?
@@ -61,6 +158,22 @@ deepMerge = (target, source) ->
     else
       target[k] = Array.isArray(v) and v.slice() or v
   target
+
+stripUiDirectives = (node) ->
+  return node unless node?
+  if Array.isArray(node)
+    directive = node[0]
+    if directive is 'UI_checkbox'
+      return node[1] is true
+    if directive is 'UI_dropdown'
+      return if node.length >= 3 then node[2] else ''
+    return node.map (item) -> stripUiDirectives(item)
+  if isPlainObject(node)
+    out = {}
+    for own k, v of node
+      out[k] = stripUiDirectives(v)
+    return out
+  node
 
 loadYamlSafe = (p) ->
   return {} unless p? and fs.existsSync(p)
@@ -78,11 +191,87 @@ expandIncludes = (spec, baseDir) ->
 ensureSingleInstance = ->
   try
     scriptPath = path.resolve(__filename)
-    out = execSync("ps -Ao pid,command | grep 'coffee' | grep '#{scriptPath}' | grep -v grep || true").toString()
-    lines = out.trim().split("\n").filter (l)-> l.length>0
-    others = lines.filter (l)-> not l.startsWith(process.pid.toString())
-    if others.length>0 then process.exit(0)
-  catch then null
+    out = execSync('ps -Ao pid=,command=', encoding:'utf8')
+    lines = out.split("\n").map((l)-> l.trim()).filter (l)-> l.length > 0
+    others = []
+
+    for line in lines
+      match = line.match /^(\d+)\s+(.*)$/
+      continue unless match?
+      pid = Number(match[1])
+      command = String(match[2] ? '')
+      continue unless Number.isFinite(pid) and pid > 0
+      continue if pid is process.pid
+      continue unless command.includes('pipeline_runner.coffee')
+      continue unless command.includes(scriptPath) or command.includes(path.basename(scriptPath))
+      others.push
+        pid: pid
+        command: command
+
+    if others.length > 0
+      console.error "[pipeline_runner] another pipeline_runner.coffee is already active"
+      for other in others
+        console.error "[pipeline_runner] active pid=#{other.pid} cmd=#{other.command}"
+      return others
+  catch err
+    console.error "[pipeline_runner] single-instance check failed:", String(err?.message ? err)
+    null
+  null
+
+isProcessAlive = (pid) ->
+  num = Number(pid)
+  return false unless Number.isFinite(num) and num > 0
+  try
+    process.kill num, 0
+    true
+  catch
+    false
+
+summarizeValue = (value) ->
+  kind = if value is null then 'null' else if Array.isArray(value) then 'array' else typeof value
+  summary = { kind }
+  if Array.isArray(value)
+    summary.count = value.length
+  else if typeof value is 'string'
+    summary.bytes = value.length
+  else if isPlainObject(value)
+    summary.count = Object.keys(value).length
+  summary
+
+createUiRecorder = (memo, stateDir) ->
+  relativeDir = path.relative(CWD, stateDir) or 'state'
+  eventsKey = path.join(relativeDir, 'ui-events.jsonl')
+  runKey = path.join(relativeDir, 'ui-run.json')
+
+  recorder =
+    reset: ->
+      memo.saveThis eventsKey, []
+      memo.saveThis runKey, {}
+
+    event: (payload) ->
+      row = Object.assign
+        at: new Date().toISOString()
+      , payload
+      current = memo.theLowdown(eventsKey)?.value
+      current = [] unless Array.isArray(current)
+      rows = current.slice()
+      rows.push row
+      memo.saveThis eventsKey, rows
+      row
+
+    saveRun: (payload) ->
+      row = Object.assign
+        updated_at: new Date().toISOString()
+      , payload
+      memo.saveThis runKey, row
+      row
+
+    updateRun: (patch) ->
+      current = memo.theLowdown(runKey)?.value
+      current = {} unless isPlainObject(current)
+      @saveRun Object.assign({}, current, patch)
+
+  recorder
 
 # -------------------------------------------------------------------
 # State Directory: One file per step
@@ -180,7 +369,10 @@ class Memo
     unless entry?
       entry = @_newEntry(key, value)
       @MM[key] = entry
-      try rv = entry.meta(key, value) catch then null
+      try
+        rv = entry.meta(key, value)
+      catch err
+        throw new Error "[Memo.saveThis] meta write failed for #{key}: #{err?.message ? err}"
       entry.value = rv if rv?
       @_resolve(entry, value) if value is true or value is false
       return entry
@@ -188,7 +380,10 @@ class Memo
     old = entry.resolver
     entry = @MM[key] = @_newEntry(key, value)
     try old?(value) catch then null
-    try rv = entry.meta(key, value) catch then null
+    try
+      rv = entry.meta(key, value)
+    catch err
+      throw new Error "[Memo.saveThis] meta write failed for #{key}: #{err?.message ? err}"
     entry.value = rv if rv?
     @_resolve(entry, value) if value is true or value is false   # <<< CRITICAL FIX
     entry.notifier.then (nv) -> entry.value = nv if nv?
@@ -271,11 +466,13 @@ class Memo
 # -------------------------------------------------------------------
 # Experiment + DAG
 # -------------------------------------------------------------------
-createExperimentObject = (configPath, overridePath) ->
+createExperimentObject = (configPath, overridePath, controlOverridePath = null) ->
   recipe = expandIncludes loadYamlSafe(configPath), path.dirname(configPath)
   merged = deepMerge {}, recipe
   merged = deepMerge merged, loadYamlSafe(overridePath)
-  return merged
+  if controlOverridePath? and fs.existsSync(controlOverridePath)
+    merged = deepMerge merged, loadYamlSafe(controlOverridePath)
+  return stripUiDirectives(merged)
 
 normalizeDeps = (d) ->
   return [] unless d?
@@ -354,7 +551,7 @@ terminalSteps = (steps) ->
 isNewStyleStep = (p) ->
   try /\@step\s*=/.test fs.readFileSync(p,'utf8') catch then false
 
-createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor) ->
+createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor, uiRecorder = null) ->
   getDecls = ->
     stepP = memo.theLowdown("params/#{stepName}.yaml")?.value ? {}
     needs = normalizeArtifactKeys(stepP.needs ? [])
@@ -378,6 +575,9 @@ createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor) ->
   debug = (parts...) ->
     return unless debugEnabled()
     console.log "[#{new Date().toISOString()}] [S #{stepName}]", parts...
+
+  ui = (payload) ->
+    try uiRecorder?.event Object.assign({ step: stepName }, payload) catch then null
 
   getStepParams = ->
     memo.theLowdown("params/#{stepName}.yaml")?.value ? {}
@@ -433,15 +633,19 @@ createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor) ->
 
     param: (key, defaultValue) ->
       debug "param request", key
+      ui type:'param', phase:'request', key:key
       value = memo.getStepParam stepName, key
       if value is undefined and arguments.length >= 2
         debug "param default", key, defaultValue
+        ui type:'param', phase:'default', key:key, value_summary:summarizeValue(defaultValue)
         return defaultValue
       if value is undefined
         debug "param missing", key
+        ui type:'param', phase:'missing', key:key
         console.error "[#{stepName}] Missing required param '#{key}'"
         throw new Error "[#{stepName}] Missing required param '#{key}'"
       debug "param resolved", key, "(#{typeof value})", value
+      ui type:'param', phase:'resolved', key:key, value_summary:summarizeValue(value)
       value
 
     getStepParam: (nameOrKey, key, defaultValue = undefined) ->
@@ -452,6 +656,7 @@ createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor) ->
     need: (artifactKey) ->
       { needs, makes } = getDecls()
       debug "need request", describeArtifact(artifactKey), "declared needs=", needs.join(','), "makes=", makes.join(',')
+      ui type:'need', phase:'request', artifact:artifactKey, artifact_detail:describeArtifact(artifactKey)
       declared = needs.includes(artifactKey) or makes.includes(artifactKey)
       throw new Error "[#{stepName}] Artifact '#{artifactKey}' must be declared in needs or makes" unless declared
 
@@ -459,19 +664,23 @@ createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor) ->
       value = entry?.value
       if value is undefined and needs.includes(artifactKey)
         debug "need waiting", describeArtifact(artifactKey)
+        ui type:'need', phase:'waiting', artifact:artifactKey, artifact_detail:describeArtifact(artifactKey)
         value = await entry.notifier
         debug "need awakened", describeArtifact(artifactKey), "(#{typeof value})"
 
       if value is undefined
         debug "need missing", describeArtifact(artifactKey)
+        ui type:'need', phase:'missing', artifact:artifactKey, artifact_detail:describeArtifact(artifactKey)
         console.error "[#{stepName}] Missing required artifact '#{artifactKey}'"
         throw new Error "[#{stepName}] Missing required artifact '#{artifactKey}'"
       debug "need resolved", describeArtifact(artifactKey), "(#{typeof value})"
+      ui type:'need', phase:'resolved', artifact:artifactKey, artifact_detail:describeArtifact(artifactKey), value_summary:summarizeValue(value)
       value
 
     peek: (artifactKey, defaultValue = undefined) ->
       { needs, makes } = getDecls()
       debug "peek request", describeArtifact(artifactKey), "declared needs=", needs.join(','), "makes=", makes.join(',')
+      ui type:'peek', phase:'request', artifact:artifactKey, artifact_detail:describeArtifact(artifactKey)
       declared = needs.includes(artifactKey) or makes.includes(artifactKey)
       throw new Error "[#{stepName}] Artifact '#{artifactKey}' must be declared in needs or makes" unless declared
 
@@ -500,24 +709,31 @@ createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor) ->
 
       if value is undefined
         debug "peek default", describeArtifact(artifactKey), defaultValue
+        ui type:'peek', phase:'default', artifact:artifactKey, artifact_detail:describeArtifact(artifactKey), value_summary:summarizeValue(defaultValue)
         return defaultValue
       debug "peek resolved", describeArtifact(artifactKey), "(#{typeof value})"
+      ui type:'peek', phase:'resolved', artifact:artifactKey, artifact_detail:describeArtifact(artifactKey), value_summary:summarizeValue(value)
       value
 
     make: (artifactKey, value) ->
       { makes } = getDecls()
       debug "make request", describeArtifact(artifactKey), "declared makes=", makes.join(',')
+      ui type:'make', phase:'request', artifact:artifactKey, artifact_detail:describeArtifact(artifactKey), value_summary:summarizeValue(value)
       throw new Error "[#{stepName}] Artifact '#{artifactKey}' must be declared in makes" unless makes.includes artifactKey
       memo.saveThis artifactKey, value
       debug "make wrote", describeArtifact(artifactKey), "(#{typeof value})"
+      ui type:'make', phase:'written', artifact:artifactKey, artifact_detail:describeArtifact(artifactKey), value_summary:summarizeValue(value)
       value
 
     done: ->
       debug "done"
+      ui type:'step', phase:'done'
+      memo.saveThis "done:#{stepName}", true
       true
 
     fail: (err) ->
       debug "fail", String(err?.message ? err)
+      ui type:'step', phase:'failed', error:String(err?.message ? err)
       memo.saveThis "done:#{stepName}", false
       throw err
 
@@ -533,25 +749,38 @@ createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor) ->
 
   ledger
 
-runStep = (n, def, exp, M, S, active, resolveArtifact, artifactSpecFor) ->
+runStep = (n, def, exp, M, S, active, resolveArtifact, artifactSpecFor, uiRecorder = null) ->
   new Promise (res, rej) ->
     active.count += 1
     active.names ?= new Set()
     active.names.add n
     S.markRunning n
+    try uiRecorder?.event type:'step', phase:'running', step:n catch then null
 
     finish = (ok, errMsg=null) ->
       active.count -= 1
       active.names?.delete n
       if ok
+        wantsRestart = M.theLowdown("restart_here:#{n}")?.value is true
+        if wantsRestart
+          S.markDone n, restart_here:true
+        else
+          S.markDone n
+        M.saveThis "done:#{n}", true
+        try uiRecorder?.event type:'step', phase:'finished', step:n, status:'done' catch then null
         res(true)
       else
-        S.markFailed n, errMsg ? "failed"
-        S.writePipelineShutdown
+        shutdownInfo =
           status: 'shutdown'
           by: n
           reason: errMsg ? "failed"
+          failed: true
+          timestamp: new Date().toISOString()
+        S.markFailed n, errMsg ? "failed"
+        S.writePipelineShutdown shutdownInfo
+        M.saveThis "pipeline:shutdown", shutdownInfo
         M.saveThis "done:#{n}", false
+        try uiRecorder?.event type:'step', phase:'finished', step:n, status:'failed', error:String(errMsg ? "failed") catch then null
         rej new Error(String(errMsg ? "failed"))
 
     script = path.join(EXEC,'scripts',def.run)
@@ -582,7 +811,7 @@ runStep = (n, def, exp, M, S, active, resolveArtifact, artifactSpecFor) ->
         finish(false, "Missing @step.action in #{script}")
         return
       try
-        L = createStepLedger(M, n, resolveArtifact, artifactSpecFor)
+        L = createStepLedger(M, n, resolveArtifact, artifactSpecFor, uiRecorder)
         pp=Promise.resolve(step.action(L,n,M))
         pp.then -> finish(true)
         pp.catch (e)-> finish(false, e.message)
@@ -693,29 +922,68 @@ Implementation notes:
 # MODIFY main()
 # -------------------------------------------------------------------
 main = ->
-  ensureSingleInstance()
+  otherRunners = ensureSingleInstance()
+  if otherRunners?.length
+    stateDir = path.join(CWD, 'state')
+    fs.mkdirSync(stateDir, {recursive:true})
+    uiRunPath = path.join(stateDir, 'ui-run.json')
+    current = {}
+    if fs.existsSync(uiRunPath)
+      try current = JSON.parse(fs.readFileSync(uiRunPath, 'utf8')) catch then current = {}
+    if isProcessAlive(current?.pid)
+      current.status = 'running'
+      current.reason = 'attached to existing pipeline_runner.coffee'
+    else
+      current.status = 'skipped'
+      current.finished_at = new Date().toISOString()
+      current.reason = 'another pipeline_runner.coffee is already active'
+    current.other_runners = otherRunners
+    fs.writeFileSync uiRunPath, JSON.stringify(current, null, 2), 'utf8'
+    process.exit(0)
+
+  pythonEnv = validatePythonEnvironment(CWD)
 
   M = new Memo()
   metaLoader = require path.join(EXEC, 'meta')
   metaLoader(M, { baseDir: CWD })
   S = new StepStateStore path.join(CWD,'state')
+  U = createUiRecorder M, path.join(CWD,'state')
+  U.reset()
 
   M.saveThis "env/EXEC", EXEC
   M.saveThis "env/CWD",  CWD
-  M.saveThis "env/PYTHON", resolvePython(CWD)
+  M.saveThis "env/PYTHON", pythonEnv.python
+  M.saveThis "env/PYTHON_VERSION", pythonEnv.python_version if pythonEnv.python_version?
+  M.saveThis "env/REQUIREMENTS_TXT", pythonEnv.requirements_path
+  M.saveThis "env/MLX_PACKAGES", pythonEnv.packages
+  M.saveThis "env/HH_MM", process.env.HH_MM if process.env.HH_MM?
+  M.saveThis "env/LOGDIR", process.env.LOGDIR if process.env.LOGDIR?
 
   overridePath = path.join(CWD,'override.yaml')
+  controlOverridePath = path.join(CWD,'control_override.yaml')
   override = loadYamlSafe overridePath
-  unless override.pipeline?
-    console.error "override.yaml missing pipeline"
+  controlOverride = loadYamlSafe controlOverridePath
+  pipelineName = controlOverride.pipeline ? override.pipeline
+  unless pipelineName?
+    console.error "override.yaml/control_override.yaml missing pipeline"
     process.exit(1)
 
-  configPath = path.join(EXEC,'config',"#{override.pipeline}.yaml")
-  experiment = createExperimentObject configPath, overridePath
-  if experiment.run.model && experiment.run.loraLand
+  configPath = path.join(EXEC,'config',"#{pipelineName}.yaml")
+  experiment = createExperimentObject configPath, overridePath, controlOverridePath
+  U.saveRun
+    pipeline: pipelineName
+    pid: process.pid
+    cwd: CWD
+    exec: EXEC
+    hh_mm: process.env.HH_MM ? null
+    logdir: process.env.LOGDIR ? null
+    started_at: new Date().toISOString()
+    status: 'running'
+  if experiment.run?.model and experiment.run?.loraLand
     modelDirName = experiment.run.model.replace /\//g, '--'
     targetDir    = path.resolve experiment.run.loraLand, modelDirName
     M.saveThis 'modelDir', targetDir
+  fs.writeFileSync path.join(CWD, 'experiment.yaml'), yaml.dump(experiment, lineWidth: 120, noRefs: true), 'utf8'
   M.saveThis 'experiment.yaml',experiment
 
   steps  = discoverSteps experiment
@@ -842,24 +1110,12 @@ main = ->
         return if M.theLowdown("pipeline:shutdown").value?
         return if M.theLowdown("done:#{n}").value is true
         scheduled.add n
+        try U.event type:'step', phase:'scheduled', step:n catch then null
+        artifactSpecLookup = (artifactKey) -> artifacts[artifactKey]
         Promise.resolve(wireInputsForStep(n))
-          .then -> runStep(n, steps[n], experiment, M, S, active, resolveArtifact, (artifactKey) -> artifacts[artifactKey])
+          .then -> runStep(n, steps[n], experiment, M, S, active, resolveArtifact, artifactSpecLookup, U)
           .then -> collectOutputsForStep(n)
-          .then ->
-            wantsRestart = M.theLowdown("restart_here:#{n}")?.value is true
-            if wantsRestart
-              S.markDone n, restart_here:true
-            else
-              S.markDone n
-            M.saveThis "done:#{n}", true
           .catch (e) ->
-            unless M.theLowdown("done:#{n}").value is false
-              S.markFailed n, e.message
-              S.writePipelineShutdown
-                status: 'shutdown'
-                by: n
-                reason: e.message
-              M.saveThis "done:#{n}", false
             console.error "! Step #{n} error:", e.message
       if deps.length is 0
         start()
@@ -871,10 +1127,15 @@ main = ->
     sd = M.theLowdown("pipeline:shutdown").value
     if sd?
       S.writePipelineShutdown sd
-      banner "🛑 PIPELINE SHUTDOWN"
+      exitCode = if sd.failed is true then 1 else 0
+      U.updateRun
+        status: if sd.failed is true then 'failed' else 'shutdown'
+        shutdown: sd
+        finished_at: new Date().toISOString()
+      banner if sd.failed is true then "💥 PIPELINE FAILED" else "🛑 PIPELINE SHUTDOWN"
       console.log "  by:", sd.by
       console.log "  reason:", sd.reason
-      process.exit(0)
+      process.exit(exitCode)
 
     doneFinals = true
     anyFail = false
@@ -888,9 +1149,15 @@ main = ->
 
     if doneFinals and active.count is 0
       if anyFail
+        U.updateRun
+          status: 'failed'
+          finished_at: new Date().toISOString()
         banner "💥 Pipeline finished with failures (final: #{finals.join(', ')})"
         process.exit(1)
       else
+        U.updateRun
+          status: 'done'
+          finished_at: new Date().toISOString()
         banner "🌟 Pipeline finished (final: #{finals.join(', ')})"
         process.exit(0)
 

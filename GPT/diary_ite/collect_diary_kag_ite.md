@@ -1,0 +1,42 @@
+Step: `collect_diary_kag_ite`
+Recipe: `diary_ite`
+
+Purpose:
+- collect DB-backed KAG chunk matches for the chosen diary event emotions
+
+Inputs:
+- artifact `story_parts`
+- params:
+  - `scene_emotion`
+  - `arrival_emotion`
+  - `disturbance_emotion`
+  - `reflection_emotion`
+  - `realization_emotion`
+  - `per_event_match_limit`
+
+Outputs:
+- artifact `diary_kag`
+
+Current matching mode:
+- SQLite is authoritative for KAG matching
+- match by `kag_entries.keyword`
+- use DB-returned `story_id` and `chunk_index`
+- derive the exact chunk text from the matched story text using the canonical 5-group rule
+
+Important KAG fields:
+- `keyword`
+- `headline`
+- `chunk_index`
+- `paragraph_index`
+
+Why `chunk_index` matters:
+- diary prompts must use the exact DB-chosen chunk, not a heuristic substitute
+
+Current payload shape:
+- `diary_kag.events.<kind>.selected_emotion`
+- `diary_kag.events.<kind>.matches[]`
+- flat `diary_kag.entries` remains as a compatibility summary
+
+Known pitfalls:
+- do not reintroduce `pretend_story_ids`
+- do not invent chunk identity outside the DB KAG rows

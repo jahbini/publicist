@@ -2,7 +2,36 @@ cleanFragment = (value) ->
   text = String(value ? '').trim()
   text = text.replace /^\*+|\*+$/g, ''
   text = text.replace /^["'“”]+|["'“”]+$/g, ''
+  text = text.replace /\bend_assistant_\d+\b/ig, ''
+  text = text.replace /\bassistant_\d+\b/ig, ''
+  text = text.replace /_+/g, '_'
   text.trim()
+
+ALLOWED_EMOTION_KEYWORDS = new Set [
+  'joy'
+  'contentment'
+  'sadness'
+  'grief'
+  'fear'
+  'anxiety'
+  'anger'
+  'frustration'
+  'disgust'
+  'shame'
+  'surprise'
+  'neutral'
+]
+
+normalizeAllowedEmotionKeyword = (value) ->
+  text = cleanFragment(value).toLowerCase()
+  text = text.replace /^#/, ''
+  text = text.replace /[^a-z0-9]+/g, '_'
+  text = text.replace /^_+|_+$/g, ''
+  return null unless text.length
+  return text if ALLOWED_EMOTION_KEYWORDS.has(text)
+  match = text.match /^(joy|contentment|sadness|grief|fear|anxiety|anger|frustration|disgust|shame|surprise|neutral)(?:_|$)/
+  return match[1] if match?
+  null
 
 toEmotionKey = (value, fallbackIndex) ->
   text = cleanFragment(value).toLowerCase()
@@ -26,7 +55,11 @@ extractJSON = (raw) ->
   lines = String(raw).split /\r?\n/
 
   for line, idx in lines
-    numbered = line.match /^\s*([1-5])(?!\d)[^A-Za-z\s]*\s*(.+?)\s*$/
+    cleanedLine = String(line ? '').trim()
+    continue unless cleanedLine.length
+    continue if /^=+$/.test(cleanedLine)
+
+    numbered = cleanedLine.match /^\s*(\d+)(?!\d)[^A-Za-z\s]*\s*(.+?)\s*$/
     continue unless numbered?
 
     ordinal = Number numbered[1]
@@ -78,11 +111,11 @@ filterEmotions = (emotions) ->
   seenValues = new Set()
 
   for own key, value of emotions
-    emotionKey = toEmotionKey key, Object.keys(filtered).length + 1
+    emotionKey = normalizeAllowedEmotionKeyword(key) ? normalizeAllowedEmotionKeyword(value)
+    continue unless emotionKey?
     emotionText = cleanFragment value
     continue unless emotionText.length
     continue if rejectPatterns.some (pattern) -> pattern.test(emotionKey) or pattern.test(emotionText)
-    continue if /^emotion_\d+$/.test(emotionKey) and /^(disturbing|amused|nostalgic|speculative|serene|joyous|blissful|melancholic|absurd)$/i.test(emotionText)
     dedupeKey = "#{emotionKey}|#{emotionText.toLowerCase()}"
     continue if seenValues.has dedupeKey
     seenValues.add dedupeKey
@@ -93,26 +126,35 @@ filterEmotions = (emotions) ->
 isUsableEmotionList = (emotions) ->
   return false unless emotions? and typeof emotions is 'object'
   keys = Object.keys emotions
-  return false if keys.length < 3
+  return false if keys.length < 1
   true
 
-runOracleOnce = (S, modelDir, prompt) ->
-  raw = S.callMLX 'generate',
-     model: modelDir
-     prompt: prompt
+runOracleOnce = (S, modelDir, prompt, adapterPath, debugMlx = false) ->
+  args =
+    model: modelDir
+    prompt: prompt
+
+  args["adapter-path"] = adapterPath if adapterPath?
+
+  raw = S.callMLX 'generate', args, debugMlx
 
   parsed = extractJSON raw
   filtered = filterEmotions parsed
   {raw, parsed, filtered}
 
+renderPrompt = (template, text) ->
+  throw new Error "oracle prompt_text must be a string" unless typeof template is 'string'
+  throw new Error "oracle prompt_text must contain a {...} insertion marker" unless /\{[^}]*\}/.test(template)
+  template.replace /\{[^}]*\}/, String(text ? '')
+
 @step =
   desc: "Classify a batch of untagged markdown segments with the emotion oracle"
 
   action: (S) ->
-    promptPrefix = S.param 'prompt_prefix'
-    promptSuffix = S.param 'prompt_suffix'
+    promptText = S.param 'prompt_text'
     batchSz = S.param 'batch_size'
     quantizedModelMemoKey = S.param 'quantized_model_memo_key', 'quantizedModelDir'
+    adapterPath = S.param 'adapter_path', null
     modelDir = S.theLowdown(quantizedModelMemoKey)?.value ? S.param('model_dir') ? S.theLowdown('modelDir')?.value
     throw new Error "[oracle_ask] Missing model_dir/quantized model path" unless modelDir?
     segments = await S.need 'marshalled_stories'
@@ -169,13 +211,13 @@ runOracleOnce = (S, modelDir, prompt) ->
     for segment in pending
       text = segment.text ? ''
       meta = segment.meta ? {}
-      prompt = "#{promptPrefix}#{text}#{promptSuffix}"
-      attempt1 = runOracleOnce S, modelDir, prompt
+      prompt = renderPrompt promptText, text
+      attempt1 = runOracleOnce S, modelDir, prompt, adapterPath
       finalAttempt = attempt1
 
       unless isUsableEmotionList(attempt1.filtered)
         console.log "[oracle_ask] retrying #{meta.doc_id} #{meta.paragraph_index} after filter rejection"
-        attempt2 = runOracleOnce S, modelDir, prompt
+        attempt2 = runOracleOnce S, modelDir, prompt, adapterPath, true
         finalAttempt = attempt2
         unless isUsableEmotionList(attempt2.filtered)
           console.error "[oracle_ask] FAILED #{meta.doc_id} #{meta.paragraph_index} oracle did not produce a usable filtered emotion list after retry"
