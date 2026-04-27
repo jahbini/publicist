@@ -1,0 +1,81 @@
+run:
+  output_dir: out
+  data_dir: data
+  params_dir: params
+  campaign_name: Drift Oven Spring Pop-Up Series
+  brand_name: Drift Oven
+  launch_city: Portland, OR
+  review_owner: publicist-team
+
+artifacts:
+  source_material:
+    target: out/agents/publicist/source_material.yaml
+  audience_profiles:
+    target: out/agents/publicist/audience_profiles.yaml
+  contact_ledger:
+    target: out/agents/publicist/contact_ledger.yaml
+  message_drafts:
+    target: out/agents/publicist/message_drafts.yaml
+  review_decisions:
+    target: out/agents/publicist/review_decisions.yaml
+  sqlite_load_report:
+    target: out/agents/publicist/sqlite_load_report.yaml
+  review_packet:
+    target: out/agents/publicist/review_packet.md
+
+load_material:
+  run: ../agents/publicist/load_material.coffee
+  depends_on: []
+  needs: []
+  makes: [source_material]
+  source_file: data/agents/publicist/sample_source.txt
+  announcement_date: "2026-05-18"
+  review_goal: Prepare reviewed outreach drafts only.
+
+identify_audiences:
+  run: ../agents/publicist/identify_audiences.coffee
+  depends_on: [load_material]
+  needs: [source_material]
+  makes: [audience_profiles]
+  priority_audiences:
+    - local_food_press
+    - neighborhood_newsletters
+    - community_partners
+    - event_calendars
+
+build_contact_ledger:
+  run: ../agents/publicist/build_contact_ledger.coffee
+  depends_on: [identify_audiences]
+  needs: [audience_profiles]
+  makes: [contact_ledger]
+
+draft_messages:
+  run: ../agents/publicist/draft_messages.coffee
+  depends_on: [build_contact_ledger]
+  needs: [source_material, audience_profiles, contact_ledger]
+  makes: [message_drafts]
+  call_to_action: Invite reviewed outreach to cover or list opening weekend.
+  signature_name: Drift Oven Team
+
+init_review_decisions:
+  run: ../agents/publicist/init_review_decisions.coffee
+  depends_on: [draft_messages]
+  needs: [message_drafts]
+  makes: [review_decisions]
+
+validate_sqlite_load:
+  run: ../agents/publicist/validate_sqlite_load.coffee
+  depends_on: [init_review_decisions]
+  needs: [audience_profiles, contact_ledger, message_drafts, review_decisions]
+  makes: [sqlite_load_report]
+
+write_review_packet:
+  run: ../agents/publicist/write_review_packet.coffee
+  depends_on: [validate_sqlite_load]
+  needs: [source_material, audience_profiles, contact_ledger, message_drafts, review_decisions, sqlite_load_report]
+  makes: [review_packet]
+  reviewers:
+    - editorial_review
+    - brand_review
+    - founder_approval
+  review_deadline: "2026-05-12"

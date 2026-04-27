@@ -514,7 +514,6 @@ createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor) ->
 
     done: ->
       debug "done"
-      memo.saveThis "done:#{stepName}", true
       true
 
     fail: (err) ->
@@ -545,12 +544,6 @@ runStep = (n, def, exp, M, S, active, resolveArtifact, artifactSpecFor) ->
       active.count -= 1
       active.names?.delete n
       if ok
-        wantsRestart = M.theLowdown("restart_here:#{n}")?.value is true
-        if wantsRestart
-          S.markDone n, restart_here:true
-        else
-          S.markDone n
-        M.saveThis "done:#{n}", true
         res(true)
       else
         S.markFailed n, errMsg ? "failed"
@@ -852,7 +845,21 @@ main = ->
         Promise.resolve(wireInputsForStep(n))
           .then -> runStep(n, steps[n], experiment, M, S, active, resolveArtifact, (artifactKey) -> artifacts[artifactKey])
           .then -> collectOutputsForStep(n)
+          .then ->
+            wantsRestart = M.theLowdown("restart_here:#{n}")?.value is true
+            if wantsRestart
+              S.markDone n, restart_here:true
+            else
+              S.markDone n
+            M.saveThis "done:#{n}", true
           .catch (e) ->
+            unless M.theLowdown("done:#{n}").value is false
+              S.markFailed n, e.message
+              S.writePipelineShutdown
+                status: 'shutdown'
+                by: n
+                reason: e.message
+              M.saveThis "done:#{n}", false
             console.error "! Step #{n} error:", e.message
       if deps.length is 0
         start()
