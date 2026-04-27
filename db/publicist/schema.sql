@@ -5,7 +5,7 @@
 -- audiences
 -- Stores normalized audience rows so contacts, drafts, and events can join
 -- against a stable audience identity instead of duplicating labels everywhere.
-CREATE TABLE audiences (
+CREATE TABLE IF NOT EXISTS audiences (
   id INTEGER PRIMARY KEY,
   audience_key TEXT NOT NULL UNIQUE,
   audience_label TEXT NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE audiences (
 -- contacts
 -- Stores reviewed or placeholder contact metadata for outreach targets.
 -- This table is for joinable lookup state only, not full outbound messages.
-CREATE TABLE contacts (
+CREATE TABLE IF NOT EXISTS contacts (
   id INTEGER PRIMARY KEY,
   audience_id INTEGER NOT NULL,
   organization TEXT NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE contacts (
 -- drafts
 -- Stores lightweight draft metadata and artifact references.
 -- Long draft bodies stay in YAML/MD artifacts rather than in SQLite.
-CREATE TABLE drafts (
+CREATE TABLE IF NOT EXISTS drafts (
   id INTEGER PRIMARY KEY,
   draft_id TEXT NOT NULL UNIQUE,
   audience_id INTEGER,
@@ -60,7 +60,7 @@ CREATE TABLE drafts (
 -- review_decisions
 -- Stores per-draft human review state such as approve/reject/revise decisions,
 -- reviewer notes, and whether a draft is approved for any later send workflow.
-CREATE TABLE review_decisions (
+CREATE TABLE IF NOT EXISTS review_decisions (
   id INTEGER PRIMARY KEY,
   draft_id TEXT NOT NULL,
   decision TEXT NOT NULL DEFAULT 'pending_review',
@@ -77,7 +77,7 @@ CREATE TABLE review_decisions (
 -- Stores append-only outreach history metadata once reviewed send/log phases
 -- exist. This is future-facing and should stay empty in the current draft-only
 -- system.
-CREATE TABLE outreach_events (
+CREATE TABLE IF NOT EXISTS outreach_events (
   id INTEGER PRIMARY KEY,
   draft_id TEXT,
   contact_id INTEGER,
@@ -91,10 +91,10 @@ CREATE TABLE outreach_events (
   FOREIGN KEY (contact_id) REFERENCES contacts(id)
 );
 
-CREATE INDEX idx_audiences_key ON audiences(audience_key);
-CREATE INDEX idx_contacts_audience_id ON contacts(audience_id);
-CREATE INDEX idx_drafts_audience_id ON drafts(audience_id);
-CREATE INDEX idx_drafts_contact_id ON drafts(contact_id);
-CREATE INDEX idx_review_decisions_draft_id ON review_decisions(draft_id);
-CREATE INDEX idx_outreach_events_contact_id ON outreach_events(contact_id);
-CREATE INDEX idx_outreach_events_draft_id ON outreach_events(draft_id);
+CREATE INDEX IF NOT EXISTS idx_audiences_key ON audiences(audience_key);
+CREATE INDEX IF NOT EXISTS idx_contacts_audience_id ON contacts(audience_id);
+CREATE INDEX IF NOT EXISTS idx_drafts_audience_id ON drafts(audience_id);
+CREATE INDEX IF NOT EXISTS idx_drafts_contact_id ON drafts(contact_id);
+CREATE INDEX IF NOT EXISTS idx_review_decisions_draft_id ON review_decisions(draft_id);
+CREATE INDEX IF NOT EXISTS idx_outreach_events_contact_id ON outreach_events(contact_id);
+CREATE INDEX IF NOT EXISTS idx_outreach_events_draft_id ON outreach_events(draft_id);

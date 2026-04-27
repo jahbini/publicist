@@ -148,6 +148,23 @@ print(json.dumps(payload))
     packages: details.versions ? {}
   }
 
+recipeRequiresMlx = (recipe) ->
+  scan = (node) ->
+    return false unless node?
+    if Array.isArray(node)
+      for value in node when scan(value)
+        return true
+      return false
+    return false unless typeof node is 'object'
+    return true if node.run_mlx?
+    return true if node.mlx?
+    return true if node.debug_mlx?
+    for own _, value of node when scan(value)
+      return true
+    false
+
+  scan(recipe)
+
 deepMerge = (target, source) ->
   return target unless source?
   for own k, v of source
@@ -728,7 +745,6 @@ createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor, uiRecorder
     done: ->
       debug "done"
       ui type:'step', phase:'done'
-      memo.saveThis "done:#{stepName}", true
       true
 
     fail: (err) ->
@@ -761,13 +777,6 @@ runStep = (n, def, exp, M, S, active, resolveArtifact, artifactSpecFor, uiRecord
       active.count -= 1
       active.names?.delete n
       if ok
-        wantsRestart = M.theLowdown("restart_here:#{n}")?.value is true
-        if wantsRestart
-          S.markDone n, restart_here:true
-        else
-          S.markDone n
-        M.saveThis "done:#{n}", true
-        try uiRecorder?.event type:'step', phase:'finished', step:n, status:'done' catch then null
         res(true)
       else
         shutdownInfo =
@@ -941,24 +950,6 @@ main = ->
     fs.writeFileSync uiRunPath, JSON.stringify(current, null, 2), 'utf8'
     process.exit(0)
 
-  pythonEnv = validatePythonEnvironment(CWD)
-
-  M = new Memo()
-  metaLoader = require path.join(EXEC, 'meta')
-  metaLoader(M, { baseDir: CWD })
-  S = new StepStateStore path.join(CWD,'state')
-  U = createUiRecorder M, path.join(CWD,'state')
-  U.reset()
-
-  M.saveThis "env/EXEC", EXEC
-  M.saveThis "env/CWD",  CWD
-  M.saveThis "env/PYTHON", pythonEnv.python
-  M.saveThis "env/PYTHON_VERSION", pythonEnv.python_version if pythonEnv.python_version?
-  M.saveThis "env/REQUIREMENTS_TXT", pythonEnv.requirements_path
-  M.saveThis "env/MLX_PACKAGES", pythonEnv.packages
-  M.saveThis "env/HH_MM", process.env.HH_MM if process.env.HH_MM?
-  M.saveThis "env/LOGDIR", process.env.LOGDIR if process.env.LOGDIR?
-
   overridePath = path.join(CWD,'override.yaml')
   controlOverridePath = path.join(CWD,'control_override.yaml')
   override = loadYamlSafe overridePath
@@ -969,6 +960,26 @@ main = ->
     process.exit(1)
 
   configPath = path.join(EXEC,'config',"#{pipelineName}.yaml")
+  recipe = loadYamlSafe configPath
+  pythonEnv = if recipeRequiresMlx(recipe) then validatePythonEnvironment(CWD) else null
+
+  M = new Memo()
+  metaLoader = require path.join(EXEC, 'meta')
+  metaLoader(M, { baseDir: CWD })
+  S = new StepStateStore path.join(CWD,'state')
+  U = createUiRecorder M, path.join(CWD,'state')
+  U.reset()
+
+  M.saveThis "env/EXEC", EXEC
+  M.saveThis "env/CWD",  CWD
+  if pythonEnv?
+    M.saveThis "env/PYTHON", pythonEnv.python
+    M.saveThis "env/PYTHON_VERSION", pythonEnv.python_version if pythonEnv.python_version?
+    M.saveThis "env/REQUIREMENTS_TXT", pythonEnv.requirements_path
+    M.saveThis "env/MLX_PACKAGES", pythonEnv.packages
+  M.saveThis "env/HH_MM", process.env.HH_MM if process.env.HH_MM?
+  M.saveThis "env/LOGDIR", process.env.LOGDIR if process.env.LOGDIR?
+
   experiment = createExperimentObject configPath, overridePath, controlOverridePath
   U.saveRun
     pipeline: pipelineName
@@ -1115,7 +1126,27 @@ main = ->
         Promise.resolve(wireInputsForStep(n))
           .then -> runStep(n, steps[n], experiment, M, S, active, resolveArtifact, artifactSpecLookup, U)
           .then -> collectOutputsForStep(n)
+          .then ->
+            wantsRestart = M.theLowdown("restart_here:#{n}")?.value is true
+            if wantsRestart
+              S.markDone n, restart_here:true
+            else
+              S.markDone n
+            M.saveThis "done:#{n}", true
+            try U.event type:'step', phase:'finished', step:n, status:'done' catch then null
           .catch (e) ->
+            unless M.theLowdown("done:#{n}").value is false
+              shutdownInfo =
+                status: 'shutdown'
+                by: n
+                reason: e.message
+                failed: true
+                timestamp: new Date().toISOString()
+              S.markFailed n, e.message
+              S.writePipelineShutdown shutdownInfo
+              M.saveThis "pipeline:shutdown", shutdownInfo
+              M.saveThis "done:#{n}", false
+              try U.event type:'step', phase:'finished', step:n, status:'failed', error:String(e.message) catch then null
             console.error "! Step #{n} error:", e.message
       if deps.length is 0
         start()

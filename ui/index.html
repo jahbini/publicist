@@ -225,6 +225,177 @@
       border-bottom: 1px solid var(--line);
       padding-bottom: 6px;
     }
+    .review-groups {
+      display: grid;
+      gap: 12px;
+    }
+    .review-group {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fff;
+    }
+    .review-group h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .review-entry {
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    .review-entry:first-child {
+      border-top: 0;
+      padding-top: 0;
+      margin-top: 0;
+    }
+    .review-entry .title {
+      font-weight: 700;
+      font-family: var(--mono);
+      margin-bottom: 4px;
+    }
+    .review-meta {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .review-notes {
+      white-space: pre-wrap;
+      color: var(--ink);
+    }
+    .review-editor {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .review-editor textarea {
+      width: 100%;
+      min-height: 72px;
+      font: 13px/1.45 var(--mono);
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      resize: vertical;
+    }
+    .review-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .review-actions button {
+      font: 13px var(--sans);
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .review-actions button[data-decision="approved"] {
+      border-color: #aad2b0;
+      background: #eef9ef;
+      color: var(--good);
+    }
+    .review-actions button[data-decision="rejected"] {
+      border-color: #d5a1a8;
+      background: #fff1f3;
+      color: var(--bad);
+    }
+    .review-actions button[data-decision="revise"] {
+      border-color: #d4c18e;
+      background: #fff8e6;
+      color: var(--warn);
+    }
+    .review-actions button[data-decision="pending_review"] {
+      border-color: var(--line);
+      background: #f7f3ea;
+      color: var(--muted);
+    }
+    .review-save-status {
+      font-size: 12px;
+      color: var(--muted);
+      min-height: 1.2em;
+    }
+    .insight-blocks {
+      display: grid;
+      gap: 12px;
+    }
+    .insight-block {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fff;
+    }
+    .insight-block h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .insight-row {
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    .insight-row:first-child {
+      border-top: 0;
+      padding-top: 0;
+      margin-top: 0;
+    }
+    .review-draft {
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #faf7f0;
+      padding: 10px;
+      display: grid;
+      gap: 6px;
+    }
+    .review-draft summary {
+      cursor: pointer;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .review-draft-body {
+      white-space: pre-wrap;
+      font: 12px/1.45 var(--mono);
+      background: #171917;
+      color: #f2f0e8;
+      border-radius: 10px;
+      padding: 10px;
+    }
+    .review-draft-meta {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .draft-edit-grid {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .draft-edit-grid input,
+    .draft-edit-grid textarea {
+      width: 100%;
+      font: 13px/1.45 var(--mono);
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+    .draft-edit-grid textarea {
+      min-height: 220px;
+      resize: vertical;
+    }
     .modal-shell {
       position: fixed;
       inset: 0;
@@ -383,6 +554,21 @@
       </section>
 
       <section class="panel">
+        <h2>Review Decisions</h2>
+        <div id="review-decisions-summary" class="hint mono"></div>
+        <div id="review-decisions-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="review-packet-link" class="files" style="margin-top:10px;"></div>
+        <div id="review-decisions-groups" class="review-groups" style="margin-top:12px;"></div>
+      </section>
+
+      <section class="panel">
+        <h2>SQLite Insights</h2>
+        <div id="sqlite-insights-summary" class="hint mono"></div>
+        <div id="sqlite-insights-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="sqlite-insights-blocks" class="insight-blocks" style="margin-top:12px;"></div>
+      </section>
+
+      <section class="panel">
         <h2>Steps</h2>
         <table class="steps">
           <thead>
@@ -433,6 +619,10 @@
     let humanSaveTimer = null;
     let currentPipeName = '';
     let selectedPipeName = '';
+    let reviewDecisionsInitialized = false;
+    let reviewDecisionEdits = {};
+    let reviewDraftOpenState = {};
+    let reviewDraftEdits = {};
 
     function uiEditorHasFocus() {
       const active = document.activeElement;
@@ -443,6 +633,29 @@
       if (active.classList?.contains('ui-dropdown')) return true;
       if (active.classList?.contains('ui-checkbox')) return true;
       return false;
+    }
+
+    function reviewEditorHasFocus() {
+      const active = document.activeElement;
+      return !!(active?.classList?.contains('review-notes-input') || active?.classList?.contains('draft-subject-input') || active?.classList?.contains('draft-body-input'));
+    }
+
+    function hasDirtyReviewEdits() {
+      return Object.values(reviewDecisionEdits).some((entry) => entry?.dirty === true || entry?.saving === true);
+    }
+
+    function hasDirtyDraftEdits() {
+      return Object.values(reviewDraftEdits).some((entry) => entry?.dirty === true || entry?.saving === true);
+    }
+
+    function captureReviewDraftOpenState() {
+      const next = {};
+      document.querySelectorAll('.review-draft[data-draft-id]').forEach((node) => {
+        const draftId = node.getAttribute('data-draft-id');
+        if (!draftId) return;
+        next[draftId] = node.open === true;
+      });
+      reviewDraftOpenState = next;
     }
 
     function formatLocalTime(value) {
@@ -655,6 +868,357 @@
       `).join('');
     }
 
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function renderReviewDecisions(review) {
+      const summary = byId('review-decisions-summary');
+      const source = byId('review-decisions-source');
+      const packet = byId('review-packet-link');
+      const groupsTarget = byId('review-decisions-groups');
+      const counts = review?.counts || {};
+      const groups = review?.groups || {};
+
+      summary.textContent = [
+        `pending_review: ${counts.pending_review ?? 0}`,
+        `approved: ${counts.approved ?? 0}`,
+        `rejected: ${counts.rejected ?? 0}`,
+        `revise: ${counts.revise ?? 0}`
+      ].join('  ');
+      source.textContent = [
+        `workspace: ${review?.workspace || ''}`,
+        `decisions: ${review?.path || ''}`,
+        `drafts: ${review?.drafts_path || ''}`,
+        `joined: ${review?.matched_draft_count ?? 0}/${review?.draft_count ?? 0}`
+      ].filter(Boolean).join('  ');
+
+      const packetPath = review?.review_packet_path || '';
+      packet.innerHTML = packetPath
+        ? `<div class="file clickable fresh" data-path="${packetPath}"><span>review packet</span><span class="mono">${packetPath}</span></div>`
+        : '';
+      packet.querySelectorAll('.file.clickable').forEach((node) => {
+        node.addEventListener('click', () => {
+          const filePath = node.getAttribute('data-path');
+          if (filePath) openFileModal(filePath).catch(console.error);
+        });
+      });
+
+      captureReviewDraftOpenState();
+
+      if ((reviewEditorHasFocus() || hasDirtyReviewEdits() || hasDirtyDraftEdits()) && reviewDecisionsInitialized) {
+        return;
+      }
+
+      const order = [
+        ['pending_review', 'Pending Review'],
+        ['approved', 'Approved'],
+        ['rejected', 'Rejected'],
+        ['revise', 'Revise']
+      ];
+
+      groupsTarget.innerHTML = order.map(([key, label]) => {
+        const rows = groups[key] || [];
+        const body = rows.length
+          ? rows.map((entry) => {
+              const draftId = escapeHtml(entry.draft_id || '');
+              const contactName = escapeHtml(entry.contact_name || '');
+              const organization = escapeHtml(entry.organization || '');
+              const decision = escapeHtml(entry.decision || '');
+              const draftState = reviewDecisionEdits[entry.draft_id || ''] || {};
+              const draftEditState = reviewDraftEdits[entry.draft_id || ''] || {};
+              const draft = entry.draft || {};
+              const draftSubjectRaw = (draftEditState.dirty === true || draftEditState.saving === true)
+                ? (draftEditState.subject ?? '')
+                : (draft.subject || '');
+              const draftBodyRaw = (draftEditState.dirty === true || draftEditState.saving === true)
+                ? (draftEditState.email_body ?? '')
+                : (draft.email_body || '');
+              const draftSubject = escapeHtml(draftSubjectRaw);
+              const draftSummary = escapeHtml(draft.pitch_summary || '');
+              const draftBody = escapeHtml(draftBodyRaw);
+              const draftFollowUp = escapeHtml(draft.follow_up_note || '');
+              const draftChannel = escapeHtml(draft.contact_channel || '');
+              const draftOpen = reviewDraftOpenState[entry.draft_id || ''] === true ? 'open' : '';
+              const reviewerNotes = escapeHtml(
+                (draftState.dirty === true || draftState.saving === true)
+                  ? (draftState.notes ?? '')
+                  : (entry.reviewer_notes || '')
+              );
+              const approvedForSend = escapeHtml(String(entry.approved_for_send));
+              const saveStatus = escapeHtml(draftState.status || '');
+              const saveDisabled = draftState.saving === true ? 'disabled' : '';
+              const draftSaveStatus = escapeHtml(draftEditState.status || '');
+              const draftSaveDisabled = draftEditState.saving === true ? 'disabled' : '';
+              return `
+              <div class="review-entry">
+                <div class="title">${draftId}</div>
+                <div class="review-meta">${contactName} / ${organization}</div>
+                <div class="review-meta">decision: ${decision}  approved_for_send: ${approvedForSend}</div>
+                <div class="review-editor" data-draft-id="${draftId}">
+                  <textarea class="review-notes-input" data-draft-id="${draftId}" placeholder="reviewer notes">${reviewerNotes}</textarea>
+                  <div class="review-actions">
+                    <button type="button" class="review-save-button" data-draft-id="${draftId}" data-decision="approved" ${saveDisabled}>Approve</button>
+                    <button type="button" class="review-save-button" data-draft-id="${draftId}" data-decision="rejected" ${saveDisabled}>Reject</button>
+                    <button type="button" class="review-save-button" data-draft-id="${draftId}" data-decision="revise" ${saveDisabled}>Revise</button>
+                    <button type="button" class="review-save-button" data-draft-id="${draftId}" data-decision="pending_review" ${saveDisabled}>Pending</button>
+                  </div>
+                  <div class="review-save-status mono" data-draft-id="${draftId}">${saveStatus}</div>
+                  <details class="review-draft" data-draft-id="${draftId}" ${draftOpen}>
+                    <summary>Draft Content</summary>
+                    <div class="review-draft-meta">channel: ${draftChannel || '(missing)'}</div>
+                    <div class="review-draft-meta">summary: ${draftSummary || '(missing)'}</div>
+                    <div class="review-draft-meta">follow_up_note: ${draftFollowUp || '(missing)'}</div>
+                    <div class="draft-edit-grid">
+                      <input type="text" class="draft-subject-input" data-draft-id="${draftId}" value="${draftSubject}" placeholder="subject/title">
+                      <textarea class="draft-body-input" data-draft-id="${draftId}" placeholder="message/body/draft_text">${draftBody}</textarea>
+                    </div>
+                    <div class="review-actions">
+                      <button type="button" class="draft-save-button" data-draft-id="${draftId}" ${draftSaveDisabled}>Save Draft</button>
+                    </div>
+                    <div class="review-save-status mono" data-draft-save-id="${draftId}">${draftSaveStatus}</div>
+                  </details>
+                </div>
+              </div>
+            `;
+            }).join('')
+          : `<div class="hint">none</div>`;
+        return `
+          <div class="review-group">
+            <h3>${label} (${rows.length})</h3>
+            ${body}
+          </div>
+        `;
+      }).join('');
+
+      reviewDecisionsInitialized = true;
+
+      groupsTarget.querySelectorAll('.review-draft[data-draft-id]').forEach((node) => {
+        node.addEventListener('toggle', () => {
+          const draftId = node.getAttribute('data-draft-id') || '';
+          if (!draftId) return;
+          reviewDraftOpenState[draftId] = node.open === true;
+        });
+      });
+
+      groupsTarget.querySelectorAll('.draft-subject-input, .draft-body-input').forEach((node) => {
+        node.addEventListener('input', () => {
+          const draftId = node.getAttribute('data-draft-id') || '';
+          if (!draftId) return;
+          const subjectNode = groupsTarget.querySelector(`.draft-subject-input[data-draft-id="${draftId}"]`);
+          const bodyNode = groupsTarget.querySelector(`.draft-body-input[data-draft-id="${draftId}"]`);
+          const current = reviewDraftEdits[draftId] || {};
+          reviewDraftEdits[draftId] = {
+            ...current,
+            subject: subjectNode ? subjectNode.value : '',
+            email_body: bodyNode ? bodyNode.value : '',
+            dirty: true,
+            saving: false,
+            status: 'unsaved'
+          };
+          const statusNode = groupsTarget.querySelector(`.review-save-status[data-draft-save-id="${draftId}"]`);
+          if (statusNode) statusNode.textContent = 'unsaved';
+        });
+      });
+
+      groupsTarget.querySelectorAll('.review-notes-input').forEach((node) => {
+        node.addEventListener('input', () => {
+          const draftId = node.getAttribute('data-draft-id') || '';
+          if (!draftId) return;
+          const current = reviewDecisionEdits[draftId] || {};
+          reviewDecisionEdits[draftId] = {
+            ...current,
+            notes: node.value,
+            dirty: true,
+            saving: false,
+            status: 'unsaved'
+          };
+          const statusNode = groupsTarget.querySelector(`.review-save-status[data-draft-id="${draftId}"]`);
+          if (statusNode) statusNode.textContent = 'unsaved';
+        });
+      });
+
+      groupsTarget.querySelectorAll('.review-save-button').forEach((node) => {
+        node.addEventListener('click', async () => {
+          const draftId = node.getAttribute('data-draft-id') || '';
+          const decision = node.getAttribute('data-decision') || '';
+          const notesNode = groupsTarget.querySelector(`.review-notes-input[data-draft-id="${draftId}"]`);
+          const statusNode = groupsTarget.querySelector(`.review-save-status[data-draft-id="${draftId}"]`);
+          const notes = notesNode ? notesNode.value : '';
+          reviewDecisionEdits[draftId] = {
+            ...(reviewDecisionEdits[draftId] || {}),
+            notes,
+            dirty: false,
+            saving: true,
+            status: 'saving...'
+          };
+          if (statusNode) statusNode.textContent = 'saving...';
+          groupsTarget.querySelectorAll(`.review-save-button[data-draft-id="${draftId}"]`).forEach((button) => {
+            button.disabled = true;
+          });
+          try {
+            const res = await fetch('/api/review_decision', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                draft_id: draftId,
+                decision,
+                reviewer_notes: notes
+              })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+              throw new Error(data.error || 'save failed');
+            }
+            reviewDecisionEdits[draftId] = {
+              notes: data?.entry?.reviewer_notes || '',
+              dirty: false,
+              saving: false,
+              status: `saved ${decision} ${formatLocalTime(data?.entry?.reviewed_at || '')}`
+            };
+            if (statusNode) statusNode.textContent = reviewDecisionEdits[draftId].status;
+            await refresh();
+          } catch (err) {
+            reviewDecisionEdits[draftId] = {
+              ...(reviewDecisionEdits[draftId] || {}),
+              notes,
+              dirty: true,
+              saving: false,
+              status: String(err?.message || err)
+            };
+            if (statusNode) statusNode.textContent = reviewDecisionEdits[draftId].status;
+          } finally {
+            groupsTarget.querySelectorAll(`.review-save-button[data-draft-id="${draftId}"]`).forEach((button) => {
+              button.disabled = false;
+            });
+          }
+        });
+      });
+
+      groupsTarget.querySelectorAll('.draft-save-button').forEach((node) => {
+        node.addEventListener('click', async () => {
+          const draftId = node.getAttribute('data-draft-id') || '';
+          const subjectNode = groupsTarget.querySelector(`.draft-subject-input[data-draft-id="${draftId}"]`);
+          const bodyNode = groupsTarget.querySelector(`.draft-body-input[data-draft-id="${draftId}"]`);
+          const statusNode = groupsTarget.querySelector(`.review-save-status[data-draft-save-id="${draftId}"]`);
+          const subject = subjectNode ? subjectNode.value : '';
+          const emailBody = bodyNode ? bodyNode.value : '';
+          reviewDraftEdits[draftId] = {
+            ...(reviewDraftEdits[draftId] || {}),
+            subject,
+            email_body: emailBody,
+            dirty: false,
+            saving: true,
+            status: 'saving...'
+          };
+          if (statusNode) statusNode.textContent = 'saving...';
+          node.disabled = true;
+          try {
+            const res = await fetch('/api/message_draft', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                draft_id: draftId,
+                subject,
+                email_body: emailBody
+              })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+              throw new Error(data.error || 'draft save failed');
+            }
+            reviewDraftEdits[draftId] = {
+              subject: data?.draft?.subject || '',
+              email_body: data?.draft?.email_body || '',
+              dirty: false,
+              saving: false,
+              status: `saved ${formatLocalTime(data?.draft?.revised_at || '')}`
+            };
+            if (statusNode) statusNode.textContent = reviewDraftEdits[draftId].status;
+            await refresh();
+          } catch (err) {
+            reviewDraftEdits[draftId] = {
+              ...(reviewDraftEdits[draftId] || {}),
+              subject,
+              email_body: emailBody,
+              dirty: true,
+              saving: false,
+              status: String(err?.message || err)
+            };
+            if (statusNode) statusNode.textContent = reviewDraftEdits[draftId].status;
+          } finally {
+            node.disabled = false;
+          }
+        });
+      });
+    }
+
+    function renderSqliteInsights(insights) {
+      const summary = byId('sqlite-insights-summary');
+      const source = byId('sqlite-insights-source');
+      const blocks = byId('sqlite-insights-blocks');
+      const meta = insights?.summary || {};
+      const countsByAudience = insights?.counts_by_audience || [];
+      const pendingOutreach = insights?.pending_outreach || [];
+      const emptyAudiences = insights?.empty_audiences || [];
+      const recentActivity = insights?.recent_activity || [];
+
+      summary.textContent = [
+        `db_available: ${meta.db_available === true ? 'true' : 'false'}`,
+        `counts_by_audience: ${countsByAudience.length}`,
+        `pending_outreach: ${pendingOutreach.length}`,
+        `empty_audiences: ${emptyAudiences.length}`,
+        `recent_activity: ${recentActivity.length}`
+      ].join('  ');
+
+      source.textContent = [
+        `workspace: ${insights?.workspace || ''}`,
+        `insights: ${insights?.path || ''}`
+      ].filter(Boolean).join('  ');
+
+      const renderRows = (rows, fn) => rows.length
+        ? rows.map((row) => `<div class="insight-row">${fn(row)}</div>`).join('')
+        : '<div class="hint">none</div>';
+
+      blocks.innerHTML = `
+        <div class="insight-block">
+          <h3>Counts By Audience</h3>
+          ${renderRows(countsByAudience, (row) => `
+            <div><strong>${escapeHtml(row.audience_label || row.audience_key || '')}</strong></div>
+            <div class="mono">approved_drafts: ${escapeHtml(String(row.approved_drafts ?? 0))}</div>
+          `)}
+        </div>
+        <div class="insight-block">
+          <h3>Pending Outreach</h3>
+          ${renderRows(pendingOutreach, (row) => `
+            <div><strong>${escapeHtml(row.draft_id || '')}</strong></div>
+            <div>${escapeHtml(row.contact_name || '')} / ${escapeHtml(row.organization || '')}</div>
+            <div class="mono">${escapeHtml(row.audience_label || '')}  reviewed_at: ${escapeHtml(formatLocalTime(row.reviewed_at || ''))}</div>
+          `)}
+        </div>
+        <div class="insight-block">
+          <h3>Empty Audiences</h3>
+          ${renderRows(emptyAudiences, (row) => `
+            <div><strong>${escapeHtml(row.audience_label || row.audience_key || '')}</strong></div>
+            <div class="mono">${escapeHtml(row.audience_key || '')}</div>
+          `)}
+        </div>
+        <div class="insight-block">
+          <h3>Recent Activity</h3>
+          ${renderRows(recentActivity, (row) => `
+            <div><strong>${escapeHtml(row.draft_id || '')}</strong></div>
+            <div>${escapeHtml(row.contact_name || '')} / ${escapeHtml(row.organization || '')}</div>
+            <div class="mono">${escapeHtml(row.audience_label || '')}  reviewed_at: ${escapeHtml(formatLocalTime(row.reviewed_at || ''))}</div>
+          `)}
+        </div>
+      `;
+    }
+
     function renderKillButton(run) {
       const button = byId('kill-button');
       const pid = run?.pid;
@@ -742,6 +1306,8 @@
       renderOverrideEditor(data.controls || {});
       renderFiles(byId('out-files'), data.out_files);
       renderFiles(byId('diary-files'), data.diary_files);
+      renderReviewDecisions(data.publicist_review || {});
+      renderSqliteInsights(data.publicist_sqlite_insights || {});
       renderSteps(data.steps);
       byId('latest-log').textContent = data.latest_log || '';
       byId('latest-err').textContent = data.latest_err || '';

@@ -1,5 +1,7 @@
 #!/usr/bin/env coffee
 
+path = require 'path'
+
 splitSentences = (text) ->
   return [] unless text?
   text
@@ -18,8 +20,19 @@ splitSentences = (text) ->
     sourceFile = M.getStepParam stepName, 'source_file'
     throw new Error "[#{stepName}] Missing required key 'source_file'" unless sourceFile?
 
+    attemptedKeys = [sourceFile]
     sourceText = M.theLowdown(sourceFile)?.value
-    throw new Error "[#{stepName}] Missing source material at #{sourceFile}" unless sourceText?
+
+    if sourceText is undefined
+      execRoot = M.theLowdown('env/EXEC')?.value
+      cwd = M.theLowdown('env/CWD')?.value
+      if execRoot? and cwd?
+        execRelativeKey = path.relative(cwd, path.join(execRoot, sourceFile))
+        if execRelativeKey? and execRelativeKey.length and execRelativeKey isnt sourceFile
+          attemptedKeys.push execRelativeKey
+          sourceText = M.theLowdown(execRelativeKey)?.value
+
+    throw new Error "[#{stepName}] Missing source material. Attempted keys: #{attemptedKeys.join(', ')}" unless sourceText?
 
     campaignName = M.getStepParam(stepName, 'campaign_name') ? experiment.run?.campaign_name ? 'Untitled campaign'
     brandName = M.getStepParam(stepName, 'brand_name') ? experiment.run?.brand_name ? 'Unknown brand'

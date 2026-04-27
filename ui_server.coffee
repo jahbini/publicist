@@ -7,7 +7,7 @@ yaml = require 'js-yaml'
 { DatabaseSync } = require 'node:sqlite'
 
 CWD = process.env.CWD ? process.cwd()
-PORT = Number(process.env.UI_PORT ? 4311)
+PORT = Number(process.env.UI_PORT ? 2345)
 UI_BIND_MODE = String(process.env.UI_BIND_MODE ? (if process.argv[2] is 'net' then 'net' else 'local'))
 HOST = if UI_BIND_MODE is 'net' then '0.0.0.0' else '127.0.0.1'
 repeatLoop =
@@ -333,6 +333,20 @@ readRecipe = (pipeline) ->
   return {} unless typeof pipeline is 'string' and pipeline.length
   readYaml path.join(EXEC_ROOT, 'config', "#{pipeline}.yaml")
 
+listTopLevelPipelines = ->
+  configDir = path.join(EXEC_ROOT, 'config')
+  return [] unless fs.existsSync(configDir)
+  names = fs.readdirSync(configDir).filter (name) ->
+    return false unless /\.ya?ml$/i.test(name)
+    full = path.join(configDir, name)
+    try
+      fs.statSync(full).isFile()
+    catch
+      false
+  names
+    .map (name) -> name.replace(/\.ya?ml$/i, '')
+    .sort (a, b) -> String(a).localeCompare String(b)
+
 pad2 = (n) ->
   text = String(Number(n) ? 0)
   if text.length < 2 then "0#{text}" else text
@@ -483,15 +497,7 @@ buildControls = ->
     reflection: pending.reflection ? controlStoryStep.reflection ? recipeStoryStep.reflection ? ''
     realization: pending.realization ? controlStoryStep.realization ? recipeStoryStep.realization ? ''
     continuous: uiControl.continuous is true
-    pipelines: [
-      'base_ite'
-      'oracle_ite'
-      'lora_ite'
-      'diary_ite'
-      'diary_translate_ite'
-      'story_scan'
-      'lora_scan'
-    ]
+    pipelines: listTopLevelPipelines()
     scene_options: makeOptions 'scenes'
     arrival_options: makeOptions 'characters'
     disturbance_options: makeOptions 'disturbances'
@@ -564,8 +570,173 @@ collectExpectedOutputs = (run) ->
     diary_files: diaryFiles
   }
 
+isUsableWorkspace = (candidate) ->
+  return false unless typeof candidate is 'string' and candidate.length
+  try
+    fs.existsSync(candidate) and fs.statSync(candidate).isDirectory()
+  catch
+    false
+
+resolveStatusWorkspace = (run = null) ->
+  runCwd = String(run?.cwd ? '').trim()
+  return path.resolve(runCwd) if isUsableWorkspace(runCwd)
+  CWD
+
+resolveReviewDecisionsPaths = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  {
+    workspace: base
+    decisionsPath: path.join(base, 'out', 'agents', 'publicist', 'review_decisions.yaml')
+    draftsPath: path.join(base, 'out', 'agents', 'publicist', 'message_drafts.yaml')
+    packetPath: path.join(base, 'out', 'agents', 'publicist', 'review_packet.md')
+  }
+
+readPublicistReviewUi = (workspacePath = CWD) ->
+  { workspace: base, decisionsPath, draftsPath, packetPath } = resolveReviewDecisionsPaths(workspacePath)
+
+  decisionsDoc = if fs.existsSync(decisionsPath) then readYaml(decisionsPath) else {}
+  decisions = if Array.isArray(decisionsDoc?.decisions) then decisionsDoc.decisions else []
+  draftsDoc = if fs.existsSync(draftsPath) then readYaml(draftsPath) else {}
+  drafts = if Array.isArray(draftsDoc?.drafts) then draftsDoc.drafts else []
+  draftsById = {}
+  for draft in drafts when draft?.draft_id?
+    draftsById[draft.draft_id] = draft
+  matchedDraftCount = 0
+
+  groups =
+    pending_review: []
+    approved: []
+    rejected: []
+    revise: []
+
+  for entry in decisions
+    joinedEntry = Object.assign {}, entry
+    if draftsById[joinedEntry.draft_id]?
+      joinedEntry.draft = draftsById[joinedEntry.draft_id]
+      matchedDraftCount += 1
+    decision = String(entry?.decision ? 'pending_review').trim().toLowerCase()
+    if decision in ['approved', 'approve'] or entry?.approved_for_send is true
+      groups.approved.push joinedEntry
+    else if decision in ['rejected', 'reject']
+      groups.rejected.push joinedEntry
+    else if decision is 'revise'
+      groups.revise.push joinedEntry
+    else
+      groups.pending_review.push joinedEntry
+
+  reviewPacketPath = if fs.existsSync(packetPath) then path.relative(base, packetPath) else 'out/agents/publicist/review_packet.md'
+
+  {
+    path: if fs.existsSync(decisionsPath) then path.relative(base, decisionsPath) else 'out/agents/publicist/review_decisions.yaml'
+    workspace: base
+    drafts_path: if fs.existsSync(draftsPath) then path.relative(base, draftsPath) else 'out/agents/publicist/message_drafts.yaml'
+    review_packet_path: reviewPacketPath
+    matched_draft_count: matchedDraftCount
+    draft_count: drafts.length
+    counts:
+      pending_review: groups.pending_review.length
+      approved: groups.approved.length
+      rejected: groups.rejected.length
+      revise: groups.revise.length
+    groups: groups
+  }
+
+readPublicistSqliteInsightsUi = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  insightsPath = path.join(base, 'out', 'agents', 'publicist', 'sqlite_insights.yaml')
+  insightsDoc = if fs.existsSync(insightsPath) then readYaml(insightsPath) else {}
+
+  {
+    path: if fs.existsSync(insightsPath) then path.relative(base, insightsPath) else 'out/agents/publicist/sqlite_insights.yaml'
+    workspace: base
+    summary: insightsDoc?.summary ? { db_available: false }
+    counts_by_audience: if Array.isArray(insightsDoc?.counts_by_audience) then insightsDoc.counts_by_audience else []
+    pending_outreach: if Array.isArray(insightsDoc?.pending_outreach) then insightsDoc.pending_outreach else []
+    empty_audiences: if Array.isArray(insightsDoc?.empty_audiences) then insightsDoc.empty_audiences else []
+    recent_activity: if Array.isArray(insightsDoc?.recent_activity) then insightsDoc.recent_activity else []
+  }
+
+saveReviewDecisionUpdate = (workspacePath, payload) ->
+  { workspace, decisionsPath } = resolveReviewDecisionsPaths(workspacePath)
+  return { ok: false, error: 'review decisions file not found', path: decisionsPath } unless fs.existsSync(decisionsPath)
+
+  doc = readYaml(decisionsPath)
+  decisions = if Array.isArray(doc?.decisions) then doc.decisions.slice() else []
+  draftId = String(payload?.draft_id ? '').trim()
+  return { ok: false, error: 'draft_id is required', path: decisionsPath } unless draftId.length
+
+  decisionText = String(payload?.decision ? '').trim().toLowerCase()
+  normalizedDecision = switch decisionText
+    when 'approved', 'approve' then 'approved'
+    when 'rejected', 'reject' then 'rejected'
+    when 'revise' then 'revise'
+    when 'pending', 'pending_review' then 'pending_review'
+    else null
+  return { ok: false, error: "invalid decision '#{decisionText}'", path: decisionsPath } unless normalizedDecision?
+
+  reviewerNotes = String(payload?.reviewer_notes ? '')
+  entryIndex = decisions.findIndex (entry) -> String(entry?.draft_id ? '').trim() is draftId
+  return { ok: false, error: "draft_id not found '#{draftId}'", path: decisionsPath } unless entryIndex >= 0
+
+  reviewedAt = new Date().toISOString()
+  currentEntry = decisions[entryIndex] ? {}
+  nextEntry = Object.assign {}, currentEntry,
+    decision: normalizedDecision
+    reviewer_notes: reviewerNotes
+    approved_for_send: normalizedDecision is 'approved'
+    reviewed_at: reviewedAt
+
+  decisions[entryIndex] = nextEntry
+  nextDoc = if doc? and typeof doc is 'object' and not Array.isArray(doc) then Object.assign({}, doc) else {}
+  nextDoc.decisions = decisions
+  nextDoc.decision_count = decisions.length
+  writeText decisionsPath, dumpYaml(nextDoc)
+
+  {
+    ok: true
+    workspace: workspace
+    path: decisionsPath
+    entry: nextEntry
+  }
+
+saveDraftUpdate = (workspacePath, payload) ->
+  { workspace, draftsPath } = resolveReviewDecisionsPaths(workspacePath)
+  return { ok: false, error: 'message drafts file not found', path: draftsPath } unless fs.existsSync(draftsPath)
+
+  doc = readYaml(draftsPath)
+  drafts = if Array.isArray(doc?.drafts) then doc.drafts.slice() else []
+  draftId = String(payload?.draft_id ? '').trim()
+  return { ok: false, error: 'draft_id is required', path: draftsPath } unless draftId.length
+
+  entryIndex = drafts.findIndex (entry) -> String(entry?.draft_id ? '').trim() is draftId
+  return { ok: false, error: "draft_id not found '#{draftId}'", path: draftsPath } unless entryIndex >= 0
+
+  currentEntry = drafts[entryIndex] ? {}
+  nextEntry = Object.assign {}, currentEntry
+
+  if typeof payload.subject is 'string'
+    nextEntry.subject = payload.subject
+  if typeof payload.email_body is 'string'
+    nextEntry.email_body = payload.email_body
+  nextEntry.revised_by_human = true
+  nextEntry.revised_at = new Date().toISOString()
+
+  drafts[entryIndex] = nextEntry
+  nextDoc = if doc? and typeof doc is 'object' and not Array.isArray(doc) then Object.assign({}, doc) else {}
+  nextDoc.drafts = drafts
+  nextDoc.draft_count = drafts.length
+  writeText draftsPath, dumpYaml(nextDoc)
+
+  {
+    ok: true
+    workspace: workspace
+    path: draftsPath
+    draft: nextEntry
+  }
+
 buildStatus = ->
   run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  statusWorkspace = resolveStatusWorkspace(run)
   mergeRun = readMergeRun()
   pipelineState = readJson path.join(CWD, 'pipeline.json'), null
   expectedOutputs = collectExpectedOutputs(run)
@@ -595,6 +766,8 @@ buildStatus = ->
     latest_err: latestErr
     out_files: expectedOutputs.out_files
     diary_files: expectedOutputs.diary_files
+    publicist_review: readPublicistReviewUi(statusWorkspace)
+    publicist_sqlite_insights: readPublicistSqliteInsightsUi(statusWorkspace)
   }
 
 isAllowedFilePath = (relativePath) ->
@@ -1069,19 +1242,22 @@ handleControl = (req, res) ->
 
   pipeline = String(payload.pipeline ? '').trim()
   current = readUiControl()
+  currentPipeline = String(current?.pending?.pipeline ? readOverride().pipeline ? '')
+  pipelineChanged = pipeline.length and pipeline isnt currentPipeline
+  baseUiValues = if pipelineChanged then {} else (current?.ui_values ? {})
   next =
     continuous: if payload.continuous is true then true else false
     pending:
       pipeline: if pipeline.length then pipeline else (current?.pending?.pipeline ? readOverride().pipeline ? '')
-      scene: String(payload.scene ? '')
-      arrival: String(payload.arrival ? '')
-      disturbance: String(payload.disturbance ? '')
-      reflection: String(payload.reflection ? '')
-      realization: String(payload.realization ? '')
+      scene: if pipelineChanged then '' else String(payload.scene ? '')
+      arrival: if pipelineChanged then '' else String(payload.arrival ? '')
+      disturbance: if pipelineChanged then '' else String(payload.disturbance ? '')
+      reflection: if pipelineChanged then '' else String(payload.reflection ? '')
+      realization: if pipelineChanged then '' else String(payload.realization ? '')
     ui_values: if payload.ui_values? and typeof payload.ui_values is 'object'
-      Object.assign {}, (current?.ui_values ? {}), payload.ui_values
+      Object.assign {}, baseUiValues, payload.ui_values
     else
-      (current?.ui_values ? {})
+      baseUiValues
     control_override_text: if typeof payload.control_override_text is 'string' then payload.control_override_text else null
 
   unless typeof payload.control_override_text is 'string'
@@ -1123,6 +1299,36 @@ handleHumanOverride = (req, res) ->
   sendJson res, 200,
     ok: true
     override: override
+
+handleReviewDecisionUpdate = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  workspace = resolveStatusWorkspace(run)
+  result = saveReviewDecisionUpdate(workspace, payload)
+  return sendJson(res, 400, result) unless result.ok is true
+
+  sendJson res, 200, result
+
+handleDraftUpdate = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  workspace = resolveStatusWorkspace(run)
+  result = saveDraftUpdate(workspace, payload)
+  return sendJson(res, 400, result) unless result.ok is true
+
+  sendJson res, 200, result
 
 handleClearPipelineState = (req, res) ->
   pipelinePath = path.join(CWD, 'pipeline.json')
@@ -1221,6 +1427,16 @@ server = http.createServer (req, res) ->
         error: String(err?.message ? err)
   if url is '/api/human_override' and req.method is 'POST'
     return Promise.resolve(handleHumanOverride(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/review_decision' and req.method is 'POST'
+    return Promise.resolve(handleReviewDecisionUpdate(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/message_draft' and req.method is 'POST'
+    return Promise.resolve(handleDraftUpdate(req, res)).catch (err) ->
       sendJson res, 500,
         ok: false
         error: String(err?.message ? err)
