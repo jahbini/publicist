@@ -4,8 +4,11 @@
 *.tar
 *.tgz
 *.old
+pipes/
+
 
 node_modules/
+runtime.sqlite
 pnpm-lock.yaml
 
 # Python
