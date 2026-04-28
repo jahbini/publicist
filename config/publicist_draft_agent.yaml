@@ -3,41 +3,44 @@ run:
   data_dir: data
   params_dir: params
   "runtime.sqlite": runtime/publicist.sqlite
-  campaign_name: Drift Oven Spring Pop-Up Series
-  brand_name: Drift Oven
-  launch_city: Portland, OR
   review_owner: publicist-team
 
 artifacts:
   source_material:
-    target: out/agents/publicist/source_material.yaml
+    target: out/source_material.yaml
   audience_profiles:
-    target: out/agents/publicist/audience_profiles.yaml
+    target: out/audience_profiles.yaml
   contact_ledger:
-    target: out/agents/publicist/contact_ledger.yaml
+    target: out/contact_ledger.yaml
   message_drafts:
-    target: out/agents/publicist/message_drafts.yaml
+    target: out/message_drafts.yaml
   review_decisions:
-    target: out/agents/publicist/review_decisions.yaml
+    target: out/review_decisions.yaml
   sqlite_load_report:
-    target: out/agents/publicist/sqlite_load_report.yaml
+    target: out/sqlite_load_report.yaml
   sqlite_init_report:
-    target: out/agents/publicist/sqlite_init_report.yaml
+    target: out/sqlite_init_report.yaml
   sqlite_write_report:
-    target: out/agents/publicist/sqlite_write_report.yaml
+    target: out/sqlite_write_report.yaml
   sqlite_insights:
-    target: out/agents/publicist/sqlite_insights.yaml
+    target: out/sqlite_insights.yaml
   next_actions:
-    target: out/agents/publicist/next_actions.yaml
+    target: out/next_actions.yaml
+  research_requests:
+    target: out/research_requests.yaml
+  research_results:
+    target: out/research_results.yaml
+  enriched_drafts:
+    target: out/enriched_drafts.yaml
   review_packet:
-    target: out/agents/publicist/review_packet.md
+    target: out/review_packet.md
 
 load_material:
   run: ../agents/publicist/load_material.coffee
   depends_on: []
   needs: []
   makes: [source_material]
-  source_file: data/agents/publicist/sample_source.txt
+  source_file: source/publicist_source.txt
   announcement_date: "2026-05-18"
   review_goal: Prepare reviewed outreach drafts only.
 
@@ -46,11 +49,6 @@ identify_audiences:
   depends_on: [load_material]
   needs: [source_material]
   makes: [audience_profiles]
-  priority_audiences:
-    - local_food_press
-    - neighborhood_newsletters
-    - community_partners
-    - event_calendars
 
 build_contact_ledger:
   run: ../agents/publicist/build_contact_ledger.coffee
@@ -64,7 +62,7 @@ draft_messages:
   needs: [source_material, audience_profiles, contact_ledger]
   makes: [message_drafts]
   call_to_action: Invite reviewed outreach to cover or list opening weekend.
-  signature_name: Drift Oven Team
+  signature_name: Campaign Team
 
 init_review_decisions:
   run: ../agents/publicist/init_review_decisions.coffee
@@ -104,10 +102,30 @@ recommend_next_actions:
   makes: [next_actions]
   stale_after_days: 14
 
+plan_research_requests:
+  run: ../agents/publicist/plan_research_requests.coffee
+  depends_on: [recommend_next_actions]
+  needs: [contact_ledger, audience_profiles, next_actions]
+  makes: [research_requests]
+
+fetch_research:
+  run: ../agents/publicist/fetch_research.coffee
+  depends_on: [plan_research_requests]
+  needs: [research_requests]
+  makes: [research_results]
+  timeout_ms: 5000
+  max_response_bytes: 262144
+
+enrich_drafts_with_research:
+  run: ../agents/publicist/enrich_drafts_with_research.coffee
+  depends_on: [fetch_research]
+  needs: [research_results, message_drafts, review_decisions]
+  makes: [enriched_drafts]
+
 write_review_packet:
   run: ../agents/publicist/write_review_packet.coffee
-  depends_on: [recommend_next_actions]
-  needs: [source_material, audience_profiles, contact_ledger, message_drafts, review_decisions, sqlite_load_report, next_actions]
+  depends_on: [enrich_drafts_with_research]
+  needs: [source_material, audience_profiles, contact_ledger, message_drafts, review_decisions, sqlite_load_report, next_actions, research_requests, research_results, enriched_drafts]
   makes: [review_packet]
   reviewers:
     - editorial_review

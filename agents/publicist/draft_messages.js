@@ -7,9 +7,12 @@
     return String(value != null ? value : '').replace(/\s+/g, ' ').trim();
   };
 
-  preserveHumanRevision = function(draft, existingDraft) {
-    var merged, ref;
+  preserveHumanRevision = function(draft, existingDraft, currentSourceHash) {
+    var merged, ref, ref1;
     if ((existingDraft != null ? existingDraft.revised_by_human : void 0) !== true) {
+      return draft;
+    }
+    if (String((ref = existingDraft != null ? existingDraft.campaign_source_hash : void 0) != null ? ref : '') !== String(currentSourceHash != null ? currentSourceHash : '')) {
       return draft;
     }
     merged = Object.assign({}, draft);
@@ -20,14 +23,14 @@
       merged.email_body = existingDraft.email_body;
     }
     merged.revised_by_human = true;
-    merged.revised_at = (ref = existingDraft.revised_at) != null ? ref : new Date().toISOString();
+    merged.revised_at = (ref1 = existingDraft.revised_at) != null ? ref1 : new Date().toISOString();
     return merged;
   };
 
   this.step = {
     desc: 'Build reviewed outreach drafts from source material and audiences.',
     action: async function(L, stepName, M) {
-      var audienceProfiles, audienceProfilesKey, baseHighlights, callToAction, contactLedger, contactLedgerKey, draft, drafts, existingByDraftId, existingDoc, existingDrafts, experiment, i, len, messageDraftsTarget, payload, ref, ref1, ref2, ref3, ref4, ref5, ref6, ref7, ref8, ref9, signatureName, sourceMaterial, sourceMaterialKey;
+      var audienceProfiles, audienceProfilesKey, baseHighlights, callToAction, contactLedger, contactLedgerKey, draft, drafts, existingByDraftId, existingDoc, existingDrafts, experiment, i, len, messageDraftsTarget, payload, ref, ref1, ref10, ref2, ref3, ref4, ref5, ref6, ref7, ref8, ref9, signatureName, sourceMaterial, sourceMaterialKey;
       experiment = (ref = M.theLowdown('experiment.yaml')) != null ? ref.value : void 0;
       if (experiment == null) {
         throw new Error(`[${stepName}] Missing experiment.yaml in Memo`);
@@ -61,7 +64,7 @@
       }
       baseHighlights = ((ref9 = sourceMaterial.highlights) != null ? ref9 : []).slice(0, 2).join(' ');
       drafts = audienceProfiles.profiles.map(function(profile) {
-        var draftId, emailBody, followUp, hook, ledgerEntry, ref10, ref11, ref12, ref13, ref14, ref15, ref16, subject;
+        var draftId, emailBody, followUp, hook, ledgerEntry, ref10, ref11, ref12, ref13, ref14, ref15, ref16, ref17, subject;
         ledgerEntry = contactLedger.entries.find(function(entry) {
           return entry.audience === profile.audience_label;
         });
@@ -73,21 +76,23 @@
         draft = {
           audience_key: profile.audience_key,
           draft_id: draftId,
+          campaign_source_hash: (ref13 = sourceMaterial.source_hash) != null ? ref13 : null,
           audience_label: profile.audience_label,
-          organization: (ref13 = ledgerEntry != null ? ledgerEntry.organization : void 0) != null ? ref13 : null,
-          contact_name: (ref14 = ledgerEntry != null ? ledgerEntry.contact_name : void 0) != null ? ref14 : null,
-          contact_role: (ref15 = ledgerEntry != null ? ledgerEntry.contact_role : void 0) != null ? ref15 : null,
-          contact_channel: (ref16 = ledgerEntry != null ? ledgerEntry.contact_channel : void 0) != null ? ref16 : null,
+          organization: (ref14 = ledgerEntry != null ? ledgerEntry.organization : void 0) != null ? ref14 : null,
+          contact_name: (ref15 = ledgerEntry != null ? ledgerEntry.contact_name : void 0) != null ? ref15 : null,
+          contact_role: (ref16 = ledgerEntry != null ? ledgerEntry.contact_role : void 0) != null ? ref16 : null,
+          contact_channel: (ref17 = ledgerEntry != null ? ledgerEntry.contact_channel : void 0) != null ? ref17 : null,
           subject: subject,
           pitch_summary: hook,
           email_body: emailBody,
           follow_up_note: followUp,
           review_required: true
         };
-        return preserveHumanRevision(draft, existingByDraftId[draftId]);
+        return preserveHumanRevision(draft, existingByDraftId[draftId], sourceMaterial.source_hash);
       });
       payload = {
         generated_for: sourceMaterial.campaign_name,
+        campaign_source_hash: (ref10 = sourceMaterial.source_hash) != null ? ref10 : null,
         draft_count: drafts.length,
         drafts: drafts,
         constraints: {

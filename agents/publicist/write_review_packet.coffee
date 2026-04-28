@@ -23,6 +23,9 @@ decisionBucket = (decision) ->
     reviewDecisionsKey = 'review_decisions'
     sqliteLoadReportKey = 'sqlite_load_report'
     nextActionsKey = 'next_actions'
+    researchRequestsKey = 'research_requests'
+    researchResultsKey = 'research_results'
+    enrichedDraftsKey = 'enriched_drafts'
     sqliteInsightsTarget = experiment.artifacts?.sqlite_insights?.target
     sourceMaterial = await L.need sourceMaterialKey
     audienceProfiles = await L.need audienceProfilesKey
@@ -31,6 +34,9 @@ decisionBucket = (decision) ->
     reviewDecisions = await L.need reviewDecisionsKey
     sqliteLoadReport = await L.need sqliteLoadReportKey
     nextActions = await L.need nextActionsKey
+    researchRequests = await L.need researchRequestsKey
+    researchResults = await L.need researchResultsKey
+    enrichedDrafts = await L.need enrichedDraftsKey
     sqliteInsights = if sqliteInsightsTarget? then M.theLowdown(sqliteInsightsTarget)?.value else null
     throw new Error "[#{stepName}] Missing required artifact '#{sourceMaterialKey}'" unless sourceMaterial?
     throw new Error "[#{stepName}] Missing required artifact '#{audienceProfilesKey}'" unless audienceProfiles?.profiles?
@@ -39,6 +45,9 @@ decisionBucket = (decision) ->
     throw new Error "[#{stepName}] Missing required artifact '#{reviewDecisionsKey}'" unless reviewDecisions?.decisions?
     throw new Error "[#{stepName}] Missing required artifact '#{sqliteLoadReportKey}'" unless sqliteLoadReport?.summary?
     throw new Error "[#{stepName}] Missing required artifact '#{nextActionsKey}'" unless nextActions?.summary?
+    throw new Error "[#{stepName}] Missing required artifact '#{researchRequestsKey}'" unless Array.isArray(researchRequests?.research_requests)
+    throw new Error "[#{stepName}] Missing required artifact '#{researchResultsKey}'" unless Array.isArray(researchResults?.results)
+    throw new Error "[#{stepName}] Missing required artifact '#{enrichedDraftsKey}'" unless Array.isArray(enrichedDrafts?.enriched_drafts)
 
     reviewers = M.getStepParam(stepName, 'reviewers') ? []
     reviewDeadline = M.getStepParam stepName, 'review_deadline'
@@ -131,6 +140,77 @@ decisionBucket = (decision) ->
       (if nextActions.stale_items?.length then nextActions.stale_items.map((row) -> "- #{row.draft_id}: age=#{row.age_days ? 'n/a'}d / #{row.contact_name ? 'unknown'} / #{row.organization ? 'unknown'}").join("\n") else "- none")
     ]
 
+    researchRequestLines = [
+      "- request_count: #{researchRequests.request_count ? researchRequests.research_requests.length ? 0}"
+      "- planned_only: #{researchRequests.summary?.planned_only is true}"
+      ""
+      (if researchRequests.research_requests.length then researchRequests.research_requests.map((row) ->
+        [
+          "- #{row.request_id}: #{row.research_goal}"
+          "  audience=#{row.audience ? 'n/a'}"
+          "  organization=#{row.organization ? 'n/a'}"
+          "  contact_name=#{row.contact_name ? 'n/a'}"
+          "  search_terms=#{(row.suggested_search_terms ? []).join(' | ')}"
+          "  allowed_domains=#{(row.allowed_domains ? []).join(' | ')}"
+          "  status=#{row.status ? 'n/a'} review_required=#{row.review_required}"
+        ].join("\n")
+      ).join("\n") else "- none")
+    ]
+
+    researchResultLines = [
+      "- approved_request_count: #{researchResults.summary?.approved_request_count ? 0}"
+      "- fetched_result_count: #{researchResults.summary?.fetched_result_count ? 0}"
+      "- skipped_count: #{researchResults.summary?.skipped_count ? 0}"
+      ""
+      "### Fetched Results"
+      ""
+      (if researchResults.results.length then researchResults.results.map((row) ->
+        [
+          "- #{row.request_id}: #{row.url}"
+          "  status_code=#{row.status_code ? 'n/a'} fetched_at=#{row.fetched_at ? 'n/a'}"
+          "  title=#{row.title ? ''}"
+          "  excerpt=#{row.short_text_excerpt ? ''}"
+          "  errors=#{(row.errors ? []).join(' | ')}"
+        ].join("\n")
+      ).join("\n") else "- none")
+      ""
+      "### Skipped Requests"
+      ""
+      (if researchResults.skipped?.length then researchResults.skipped.map((row) -> "- #{row.request_id}: #{row.reason ? 'unknown'}").join("\n") else "- none")
+    ]
+
+    enrichmentLines = [
+      "- drafts_with_research: #{enrichedDrafts.summary?.drafts_with_research ? 0}"
+      "- drafts_without_research: #{enrichedDrafts.summary?.drafts_without_research ? 0}"
+      "- suggestions_only: #{enrichedDrafts.summary?.suggestions_only is true}"
+      ""
+      (if enrichedDrafts.enriched_drafts.length then enrichedDrafts.enriched_drafts.map((row) ->
+        [
+          "### #{row.draft_id}"
+          ""
+          "- audience: #{row.audience_label ? 'n/a'}"
+          "- organization: #{row.organization ? 'n/a'}"
+          "- contact_name: #{row.contact_name ? 'n/a'}"
+          "- decision: #{row.decision ? 'n/a'}"
+          "- approved_for_send: #{row.approved_for_send is true}"
+          "- matched_result_count: #{row.matched_result_count ? 0}"
+          "- matched_request_ids: #{(row.matched_request_ids ? []).join(' | ') or 'none'}"
+          ""
+          "#### Suggested Improvements"
+          ""
+          (if row.suggested_improvements?.length then row.suggested_improvements.map((item) -> "- #{item}").join("\n") else "- none")
+          ""
+          "#### Additional Talking Points"
+          ""
+          (if row.additional_talking_points?.length then row.additional_talking_points.map((item) -> "- #{item}").join("\n") else "- none")
+          ""
+          "#### Relevant Facts"
+          ""
+          (if row.relevant_facts?.length then row.relevant_facts.map((item) -> "- #{item}").join("\n") else "- none")
+        ].join("\n")
+      ).join("\n\n") else "- none")
+    ]
+
     draftLines = messageDrafts.drafts.map (draft) ->
       [
         "## #{draft.audience_label}"
@@ -213,6 +293,18 @@ decisionBucket = (decision) ->
       "## Next Actions"
       ""
       nextActionLines.join("\n")
+      ""
+      "## Research Requests"
+      ""
+      researchRequestLines.join("\n")
+      ""
+      "## Research Results"
+      ""
+      researchResultLines.join("\n")
+      ""
+      "## Research-Enhanced Suggestions"
+      ""
+      enrichmentLines.join("\n")
       ""
       "## Draft Messages"
       ""

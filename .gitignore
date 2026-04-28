@@ -3,6 +3,7 @@
 [12].log
 *.tar
 *.tgz
+*.old
 
 node_modules/
 pnpm-lock.yaml

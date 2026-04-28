@@ -65,7 +65,8 @@ daysBetween = (olderIso, newerDate = new Date()) ->
         recommendation: 'Recheck whether this reviewed item still reflects current priorities.'
 
     payload =
-      generated_for: experiment.run?.campaign_name
+      generated_for: reviewDecisions.generated_for ? experiment.run?.campaign_name
+      campaign_source_hash: reviewDecisions.campaign_source_hash ? contactLedger.campaign_source_hash ? null
       follow_up_contacts: followUpContacts
       audiences_to_expand: audiencesToExpand
       drafts_needing_review: draftsNeedingReview

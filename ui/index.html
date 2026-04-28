@@ -351,6 +351,53 @@
       padding-top: 0;
       margin-top: 0;
     }
+    .research-groups {
+      display: grid;
+      gap: 12px;
+    }
+    .research-group {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: #fff;
+    }
+    .research-group h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .research-entry {
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    .research-entry:first-child {
+      border-top: 0;
+      padding-top: 0;
+      margin-top: 0;
+    }
+    .research-editor {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .research-editor input,
+    .research-editor textarea {
+      width: 100%;
+      font: 13px/1.45 var(--mono);
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+    .research-editor textarea {
+      min-height: 84px;
+      resize: vertical;
+    }
     .review-draft {
       margin-top: 8px;
       border: 1px solid var(--line);
@@ -554,6 +601,32 @@
       </section>
 
       <section class="panel">
+        <h2>Campaign Source Text</h2>
+        <div id="publicist-source-summary" class="hint mono"></div>
+        <div id="publicist-source-path" class="hint mono" style="margin-top:6px;"></div>
+        <div class="controls" style="margin-top:12px;">
+          <textarea id="publicist-source-editor" spellcheck="false"></textarea>
+          <div class="button-row">
+            <button id="publicist-source-save-button" type="button">Save Source</button>
+          </div>
+          <div id="publicist-source-status" class="hint mono"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Campaign Config</h2>
+        <div id="publicist-campaign-config-summary" class="hint mono"></div>
+        <div id="publicist-campaign-config-path" class="hint mono" style="margin-top:6px;"></div>
+        <div class="controls" style="margin-top:12px;">
+          <textarea id="publicist-campaign-config-editor" spellcheck="false"></textarea>
+          <div class="button-row">
+            <button id="publicist-campaign-config-save-button" type="button">Save Campaign Config</button>
+          </div>
+          <div id="publicist-campaign-config-status" class="hint mono"></div>
+        </div>
+      </section>
+
+      <section class="panel">
         <h2>Review Decisions</h2>
         <div id="review-decisions-summary" class="hint mono"></div>
         <div id="review-decisions-source" class="hint mono" style="margin-top:6px;"></div>
@@ -566,6 +639,20 @@
         <div id="sqlite-insights-summary" class="hint mono"></div>
         <div id="sqlite-insights-source" class="hint mono" style="margin-top:6px;"></div>
         <div id="sqlite-insights-blocks" class="insight-blocks" style="margin-top:12px;"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Research Requests</h2>
+        <div id="research-requests-summary" class="hint mono"></div>
+        <div id="research-requests-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="research-requests-groups" class="research-groups" style="margin-top:12px;"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Research Results</h2>
+        <div id="research-results-summary" class="hint mono"></div>
+        <div id="research-results-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="research-results-blocks" class="insight-blocks" style="margin-top:12px;"></div>
       </section>
 
       <section class="panel">
@@ -623,6 +710,12 @@
     let reviewDecisionEdits = {};
     let reviewDraftOpenState = {};
     let reviewDraftEdits = {};
+    let researchRequestsInitialized = false;
+    let researchRequestEdits = {};
+    let publicistSourceInitialized = false;
+    let publicistSourceDirty = false;
+    let publicistCampaignConfigInitialized = false;
+    let publicistCampaignConfigDirty = false;
 
     function uiEditorHasFocus() {
       const active = document.activeElement;
@@ -637,7 +730,7 @@
 
     function reviewEditorHasFocus() {
       const active = document.activeElement;
-      return !!(active?.classList?.contains('review-notes-input') || active?.classList?.contains('draft-subject-input') || active?.classList?.contains('draft-body-input'));
+      return !!(active?.classList?.contains('review-notes-input') || active?.classList?.contains('draft-subject-input') || active?.classList?.contains('draft-body-input') || active?.classList?.contains('research-domains-input') || active?.classList?.contains('research-notes-input') || active?.id === 'publicist-source-editor' || active?.id === 'publicist-campaign-config-editor');
     }
 
     function hasDirtyReviewEdits() {
@@ -646,6 +739,52 @@
 
     function hasDirtyDraftEdits() {
       return Object.values(reviewDraftEdits).some((entry) => entry?.dirty === true || entry?.saving === true);
+    }
+
+    function hasDirtyResearchEdits() {
+      return Object.values(researchRequestEdits).some((entry) => entry?.dirty === true || entry?.saving === true);
+    }
+
+    function renderPublicistSource(sourceDoc) {
+      const summary = byId('publicist-source-summary');
+      const source = byId('publicist-source-path');
+      const editor = byId('publicist-source-editor');
+      const status = byId('publicist-source-status');
+      const text = typeof sourceDoc?.text === 'string' ? sourceDoc.text : '';
+
+      summary.textContent = 'editable workspace source';
+      source.textContent = [
+        `workspace: ${sourceDoc?.workspace || ''}`,
+        `source: ${sourceDoc?.path || ''}`
+      ].filter(Boolean).join('  ');
+
+      if (!((publicistSourceDirty || document.activeElement === editor) && publicistSourceInitialized)) {
+        editor.value = text;
+        publicistSourceInitialized = true;
+        publicistSourceDirty = false;
+        if (!status.textContent || status.textContent === 'unsaved') status.textContent = '';
+      }
+    }
+
+    function renderPublicistCampaignConfig(configDoc) {
+      const summary = byId('publicist-campaign-config-summary');
+      const source = byId('publicist-campaign-config-path');
+      const editor = byId('publicist-campaign-config-editor');
+      const status = byId('publicist-campaign-config-status');
+      const text = typeof configDoc?.text === 'string' ? configDoc.text : '';
+
+      summary.textContent = 'editable workspace campaign YAML';
+      source.textContent = [
+        `workspace: ${configDoc?.workspace || ''}`,
+        `config: ${configDoc?.path || ''}`
+      ].filter(Boolean).join('  ');
+
+      if (!((publicistCampaignConfigDirty || document.activeElement === editor) && publicistCampaignConfigInitialized)) {
+        editor.value = text;
+        publicistCampaignConfigInitialized = true;
+        publicistCampaignConfigDirty = false;
+        if (!status.textContent || status.textContent === 'unsaved') status.textContent = '';
+      }
     }
 
     function captureReviewDraftOpenState() {
@@ -877,24 +1016,31 @@
         .replace(/'/g, '&#39;');
     }
 
-    function renderReviewDecisions(review) {
+    function renderReviewDecisions(review, enrichedPayload) {
       const summary = byId('review-decisions-summary');
       const source = byId('review-decisions-source');
       const packet = byId('review-packet-link');
       const groupsTarget = byId('review-decisions-groups');
       const counts = review?.counts || {};
       const groups = review?.groups || {};
+      const enrichedByDraftId = enrichedPayload?.by_draft_id || {};
+      const enrichedSummary = enrichedPayload?.summary || {};
 
       summary.textContent = [
         `pending_review: ${counts.pending_review ?? 0}`,
         `approved: ${counts.approved ?? 0}`,
         `rejected: ${counts.rejected ?? 0}`,
-        `revise: ${counts.revise ?? 0}`
+        `revise: ${counts.revise ?? 0}`,
+        `research_enriched: ${enrichedSummary.drafts_with_research ?? enrichedPayload?.enriched_count ?? 0}`
       ].join('  ');
       source.textContent = [
         `workspace: ${review?.workspace || ''}`,
+        `source_material: ${review?.source_material_path || ''}`,
+        `audiences: ${review?.audience_profiles_path || ''}`,
+        `ledger: ${review?.contact_ledger_path || ''}`,
         `decisions: ${review?.path || ''}`,
         `drafts: ${review?.drafts_path || ''}`,
+        `enriched: ${review?.enriched_drafts_path || enrichedPayload?.path || ''}`,
         `joined: ${review?.matched_draft_count ?? 0}/${review?.draft_count ?? 0}`
       ].filter(Boolean).join('  ');
 
@@ -945,6 +1091,12 @@
               const draftFollowUp = escapeHtml(draft.follow_up_note || '');
               const draftChannel = escapeHtml(draft.contact_channel || '');
               const draftOpen = reviewDraftOpenState[entry.draft_id || ''] === true ? 'open' : '';
+              const enriched = enrichedByDraftId[entry.draft_id || ''] || {};
+              const enrichedFlag = enriched.research_enriched === true ? 'true' : 'false';
+              const suggestedImprovements = Array.isArray(enriched.suggested_improvements) ? enriched.suggested_improvements : [];
+              const talkingPoints = Array.isArray(enriched.additional_talking_points) ? enriched.additional_talking_points : [];
+              const relevantFacts = Array.isArray(enriched.relevant_facts) ? enriched.relevant_facts : [];
+              const matchedRequestIds = Array.isArray(enriched.matched_request_ids) ? enriched.matched_request_ids : [];
               const reviewerNotes = escapeHtml(
                 (draftState.dirty === true || draftState.saving === true)
                   ? (draftState.notes ?? '')
@@ -982,6 +1134,25 @@
                       <button type="button" class="draft-save-button" data-draft-id="${draftId}" ${draftSaveDisabled}>Save Draft</button>
                     </div>
                     <div class="review-save-status mono" data-draft-save-id="${draftId}">${draftSaveStatus}</div>
+                    <div class="review-draft-meta" style="margin-top:12px;">research_enriched: ${escapeHtml(enrichedFlag)}  matched_request_ids: ${escapeHtml(matchedRequestIds.join(' | ') || 'none')}</div>
+                    <div class="insight-block" style="margin-top:10px;">
+                      <h4 style="margin:0 0 8px 0;">Suggested Improvements</h4>
+                      ${suggestedImprovements.length
+                        ? suggestedImprovements.map((item) => `<div class="insight-row">${escapeHtml(item)}</div>`).join('')
+                        : '<div class="hint">(none)</div>'}
+                    </div>
+                    <div class="insight-block" style="margin-top:10px;">
+                      <h4 style="margin:0 0 8px 0;">Additional Talking Points</h4>
+                      ${talkingPoints.length
+                        ? talkingPoints.map((item) => `<div class="insight-row">${escapeHtml(item)}</div>`).join('')
+                        : '<div class="hint">(none)</div>'}
+                    </div>
+                    <div class="insight-block" style="margin-top:10px;">
+                      <h4 style="margin:0 0 8px 0;">Relevant Facts</h4>
+                      ${relevantFacts.length
+                        ? relevantFacts.map((item) => `<div class="insight-row">${escapeHtml(item)}</div>`).join('')
+                        : '<div class="hint">(none)</div>'}
+                    </div>
                   </details>
                 </div>
               </div>
@@ -1178,7 +1349,10 @@
 
       source.textContent = [
         `workspace: ${insights?.workspace || ''}`,
-        `insights: ${insights?.path || ''}`
+        `insights: ${insights?.path || ''}`,
+        `load: ${insights?.sqlite_load_report_path || ''}`,
+        `init: ${insights?.sqlite_init_report_path || ''}`,
+        `write: ${insights?.sqlite_write_report_path || ''}`
       ].filter(Boolean).join('  ');
 
       const renderRows = (rows, fn) => rows.length
@@ -1214,6 +1388,220 @@
             <div><strong>${escapeHtml(row.draft_id || '')}</strong></div>
             <div>${escapeHtml(row.contact_name || '')} / ${escapeHtml(row.organization || '')}</div>
             <div class="mono">${escapeHtml(row.audience_label || '')}  reviewed_at: ${escapeHtml(formatLocalTime(row.reviewed_at || ''))}</div>
+          `)}
+        </div>
+      `;
+    }
+
+    function renderResearchRequests(research) {
+      const summary = byId('research-requests-summary');
+      const source = byId('research-requests-source');
+      const groupsTarget = byId('research-requests-groups');
+      const counts = research?.counts || {};
+      const groups = research?.groups || {};
+
+      summary.textContent = [
+        `planned_only: ${counts.planned_only ?? 0}`,
+        `approved_for_research: ${counts.approved_for_research ?? 0}`,
+        `rejected: ${counts.rejected ?? 0}`
+      ].join('  ');
+      source.textContent = [
+        `workspace: ${research?.workspace || ''}`,
+        `requests: ${research?.path || ''}`,
+        `next_actions: ${research?.next_actions_path || ''}`
+      ].filter(Boolean).join('  ');
+
+      if ((reviewEditorHasFocus() || hasDirtyResearchEdits()) && researchRequestsInitialized) {
+        return;
+      }
+
+      const order = [
+        ['planned_only', 'Pending Review'],
+        ['approved_for_research', 'Approved For Research'],
+        ['rejected', 'Rejected']
+      ];
+
+      groupsTarget.innerHTML = order.map(([key, label]) => {
+        const rows = groups[key] || [];
+        const body = rows.length
+          ? rows.map((entry) => {
+              const requestId = escapeHtml(entry.request_id || '');
+              const audience = escapeHtml(entry.audience || '');
+              const organization = escapeHtml(entry.organization || '');
+              const contactName = escapeHtml(entry.contact_name || '');
+              const researchGoal = escapeHtml(entry.research_goal || '');
+              const searchTerms = escapeHtml((entry.suggested_search_terms || []).join(' | '));
+              const currentState = researchRequestEdits[entry.request_id || ''] || {};
+              const domainsValue = escapeHtml(
+                (currentState.dirty === true || currentState.saving === true)
+                  ? (currentState.allowed_domains ?? '')
+                  : ((entry.allowed_domains || []).join(', '))
+              );
+              const reviewerNotes = escapeHtml(
+                (currentState.dirty === true || currentState.saving === true)
+                  ? (currentState.reviewer_notes ?? '')
+                  : (entry.reviewer_notes || '')
+              );
+              const statusText = escapeHtml(entry.status || '');
+              const saveStatus = escapeHtml(currentState.status || '');
+              const saveDisabled = currentState.saving === true ? 'disabled' : '';
+              return `
+                <div class="research-entry">
+                  <div class="title">${requestId}</div>
+                  <div class="review-meta">${audience} / ${organization} / ${contactName}</div>
+                  <div class="review-meta">status: ${statusText}</div>
+                  <div class="review-notes">${researchGoal}</div>
+                  <div class="review-meta">suggested_search_terms: ${searchTerms}</div>
+                  <div class="research-editor" data-request-id="${requestId}">
+                    <input type="text" class="research-domains-input" data-request-id="${requestId}" value="${domainsValue}" placeholder="allowed domains, comma-separated">
+                    <textarea class="research-notes-input" data-request-id="${requestId}" placeholder="reviewer notes">${reviewerNotes}</textarea>
+                    <div class="review-actions">
+                      <button type="button" class="research-save-button" data-request-id="${requestId}" data-status="approved_for_research" ${saveDisabled}>Approve Research</button>
+                      <button type="button" class="research-save-button" data-request-id="${requestId}" data-status="rejected" ${saveDisabled}>Reject Research</button>
+                      <button type="button" class="research-save-button" data-request-id="${requestId}" data-status="planned_only" ${saveDisabled}>Pending</button>
+                    </div>
+                    <div class="review-save-status mono" data-request-id="${requestId}">${saveStatus}</div>
+                  </div>
+                </div>
+              `;
+            }).join('')
+          : `<div class="hint">none</div>`;
+        return `
+          <div class="research-group">
+            <h3>${label} (${rows.length})</h3>
+            ${body}
+          </div>
+        `;
+      }).join('');
+
+      researchRequestsInitialized = true;
+
+      groupsTarget.querySelectorAll('.research-domains-input, .research-notes-input').forEach((node) => {
+        node.addEventListener('input', () => {
+          const requestId = node.getAttribute('data-request-id') || '';
+          if (!requestId) return;
+          const domainsNode = groupsTarget.querySelector(`.research-domains-input[data-request-id="${requestId}"]`);
+          const notesNode = groupsTarget.querySelector(`.research-notes-input[data-request-id="${requestId}"]`);
+          researchRequestEdits[requestId] = {
+            ...(researchRequestEdits[requestId] || {}),
+            allowed_domains: domainsNode ? domainsNode.value : '',
+            reviewer_notes: notesNode ? notesNode.value : '',
+            dirty: true,
+            saving: false,
+            status: 'unsaved'
+          };
+          const statusNode = groupsTarget.querySelector(`.review-save-status[data-request-id="${requestId}"]`);
+          if (statusNode) statusNode.textContent = 'unsaved';
+        });
+      });
+
+      groupsTarget.querySelectorAll('.research-save-button').forEach((node) => {
+        node.addEventListener('click', async () => {
+          const requestId = node.getAttribute('data-request-id') || '';
+          const status = node.getAttribute('data-status') || '';
+          const domainsNode = groupsTarget.querySelector(`.research-domains-input[data-request-id="${requestId}"]`);
+          const notesNode = groupsTarget.querySelector(`.research-notes-input[data-request-id="${requestId}"]`);
+          const statusNode = groupsTarget.querySelector(`.review-save-status[data-request-id="${requestId}"]`);
+          const allowedDomains = domainsNode ? domainsNode.value : '';
+          const reviewerNotes = notesNode ? notesNode.value : '';
+          researchRequestEdits[requestId] = {
+            ...(researchRequestEdits[requestId] || {}),
+            allowed_domains: allowedDomains,
+            reviewer_notes: reviewerNotes,
+            dirty: false,
+            saving: true,
+            status: 'saving...'
+          };
+          if (statusNode) statusNode.textContent = 'saving...';
+          groupsTarget.querySelectorAll(`.research-save-button[data-request-id="${requestId}"]`).forEach((button) => {
+            button.disabled = true;
+          });
+          try {
+            const res = await fetch('/api/research_request', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                request_id: requestId,
+                status,
+                allowed_domains: allowedDomains,
+                reviewer_notes: reviewerNotes
+              })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+              throw new Error(data.error || 'research request save failed');
+            }
+            researchRequestEdits[requestId] = {
+              allowed_domains: (data?.request?.allowed_domains || []).join(', '),
+              reviewer_notes: data?.request?.reviewer_notes || '',
+              dirty: false,
+              saving: false,
+              status: `saved ${status} ${formatLocalTime(data?.request?.reviewed_at || '')}`
+            };
+            if (statusNode) statusNode.textContent = researchRequestEdits[requestId].status;
+            await refresh();
+          } catch (err) {
+            researchRequestEdits[requestId] = {
+              ...(researchRequestEdits[requestId] || {}),
+              allowed_domains: allowedDomains,
+              reviewer_notes: reviewerNotes,
+              dirty: true,
+              saving: false,
+              status: String(err?.message || err)
+            };
+            if (statusNode) statusNode.textContent = researchRequestEdits[requestId].status;
+          } finally {
+            groupsTarget.querySelectorAll(`.research-save-button[data-request-id="${requestId}"]`).forEach((button) => {
+              button.disabled = false;
+            });
+          }
+        });
+      });
+    }
+
+    function renderResearchResults(resultsDoc) {
+      const summary = byId('research-results-summary');
+      const source = byId('research-results-source');
+      const blocks = byId('research-results-blocks');
+      const summaryMeta = resultsDoc?.summary || {};
+      const results = resultsDoc?.results || [];
+      const skipped = resultsDoc?.skipped || [];
+
+      summary.textContent = [
+        `fetched_count: ${summaryMeta.fetched_result_count ?? results.length}`,
+        `skipped_count: ${summaryMeta.skipped_count ?? skipped.length}`,
+        `approved_request_count: ${summaryMeta.approved_request_count ?? 0}`
+      ].join('  ');
+
+      source.textContent = [
+        `workspace: ${resultsDoc?.workspace || ''}`,
+        `results: ${resultsDoc?.path || ''}`,
+        `enriched: ${resultsDoc?.enriched_drafts_path || ''}`,
+        `packet: ${resultsDoc?.review_packet_path || ''}`
+      ].filter(Boolean).join('  ');
+
+      const renderRows = (rows, fn) => rows.length
+        ? rows.map((row) => `<div class="insight-row">${fn(row)}</div>`).join('')
+        : '<div class="hint">none</div>';
+
+      blocks.innerHTML = `
+        <div class="insight-block">
+          <h3>Fetched Results</h3>
+          ${renderRows(results, (row) => `
+            <div><strong>${escapeHtml(row.request_id || '')}</strong></div>
+            <div class="mono">${escapeHtml(row.url || '')}</div>
+            <div class="mono">status_code: ${escapeHtml(String(row.status_code ?? 'n/a'))}  fetched_at: ${escapeHtml(formatLocalTime(row.fetched_at || ''))}</div>
+            <div>${escapeHtml(row.title || '')}</div>
+            <div class="review-notes">${escapeHtml(row.short_text_excerpt || '')}</div>
+            <div class="mono">errors: ${escapeHtml((row.errors || []).join(' | '))}</div>
+          `)}
+        </div>
+        <div class="insight-block">
+          <h3>Skipped Requests</h3>
+          ${renderRows(skipped, (row) => `
+            <div><strong>${escapeHtml(row.request_id || '')}</strong></div>
+            <div class="mono">reason: ${escapeHtml(row.reason || '')}</div>
+            <div class="mono">detail: ${escapeHtml(Array.isArray(row.detail) ? row.detail.join(' | ') : (row.detail || ''))}</div>
           `)}
         </div>
       `;
@@ -1274,7 +1662,7 @@
         mergeStatus: mergeRun.status || '',
         mergePid: mergeRun.pid || null
       });
-      byId('subtitle').textContent = `${pipe.current || ''}  ${run.pipeline || ''}  ${run.hh_mm || ''}  ${run.logdir || ''}`.trim();
+      byId('subtitle').textContent = `${data.active_workspace || ''}  ${pipe.current || ''}  ${run.pipeline || ''}  ${run.hh_mm || ''}  ${run.logdir || ''}`.trim();
       const status = run.status || 'unknown';
       const statusEl = byId('run-status');
       statusEl.textContent = status;
@@ -1285,7 +1673,11 @@
         ['pipe', pipe.current || ''],
         ['status', run.status],
         ['pid', run.pid],
+        ['server cwd', data.server_cwd],
+        ['active workspace', data.active_workspace],
         ['cwd', run.cwd],
+        ['exec root', data.exec_root],
+        ['active exec', data.active_exec],
         ['started', formatLocalTime(run.started_at)],
         ['finished', formatLocalTime(run.finished_at)],
         ['stories remaining', data.stories_remaining_count ?? ''],
@@ -1306,8 +1698,12 @@
       renderOverrideEditor(data.controls || {});
       renderFiles(byId('out-files'), data.out_files);
       renderFiles(byId('diary-files'), data.diary_files);
-      renderReviewDecisions(data.publicist_review || {});
+      renderPublicistSource(data.publicist_source || {});
+      renderPublicistCampaignConfig(data.publicist_campaign_config || {});
+      renderReviewDecisions(data.publicist_review || {}, data.publicist_enriched_drafts || {});
       renderSqliteInsights(data.publicist_sqlite_insights || {});
+      renderResearchRequests(data.publicist_research_requests || {});
+      renderResearchResults(data.publicist_research_results || {});
       renderSteps(data.steps);
       byId('latest-log').textContent = data.latest_log || '';
       byId('latest-err').textContent = data.latest_err || '';
@@ -1623,6 +2019,70 @@
       humanOverrideDirty = true;
       byId('human-override-status').textContent = 'editing override.yaml...';
       scheduleHumanOverrideSave();
+    });
+    byId('publicist-source-editor').addEventListener('input', () => {
+      publicistSourceDirty = true;
+      byId('publicist-source-status').textContent = 'unsaved';
+    });
+    byId('publicist-source-save-button').addEventListener('click', async () => {
+      const button = byId('publicist-source-save-button');
+      const editor = byId('publicist-source-editor');
+      const status = byId('publicist-source-status');
+      button.disabled = true;
+      status.textContent = 'saving...';
+      try {
+        const res = await fetch('/api/publicist_source', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: editor.value })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || 'source save failed');
+        }
+        editor.value = typeof data.text === 'string' ? data.text : editor.value;
+        publicistSourceDirty = false;
+        publicistSourceInitialized = true;
+        status.textContent = `saved ${data.path || ''}`;
+        await refresh();
+      } catch (err) {
+        publicistSourceDirty = true;
+        status.textContent = String(err?.message || err);
+      } finally {
+        button.disabled = false;
+      }
+    });
+    byId('publicist-campaign-config-editor').addEventListener('input', () => {
+      publicistCampaignConfigDirty = true;
+      byId('publicist-campaign-config-status').textContent = 'unsaved';
+    });
+    byId('publicist-campaign-config-save-button').addEventListener('click', async () => {
+      const button = byId('publicist-campaign-config-save-button');
+      const editor = byId('publicist-campaign-config-editor');
+      const status = byId('publicist-campaign-config-status');
+      button.disabled = true;
+      status.textContent = 'saving...';
+      try {
+        const res = await fetch('/api/publicist_campaign_config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: editor.value })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || 'campaign config save failed');
+        }
+        editor.value = typeof data.text === 'string' ? data.text : editor.value;
+        publicistCampaignConfigDirty = false;
+        publicistCampaignConfigInitialized = true;
+        status.textContent = `saved ${data.path || ''}`;
+        await refresh();
+      } catch (err) {
+        publicistCampaignConfigDirty = true;
+        status.textContent = String(err?.message || err);
+      } finally {
+        button.disabled = false;
+      }
     });
     byId('launch-button').addEventListener('click', () => {
       launchPipeline().catch(console.error);

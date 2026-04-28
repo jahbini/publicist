@@ -5,8 +5,9 @@ compactText = (value) ->
     .replace(/\s+/g, ' ')
     .trim()
 
-preserveHumanRevision = (draft, existingDraft) ->
+preserveHumanRevision = (draft, existingDraft, currentSourceHash) ->
   return draft unless existingDraft?.revised_by_human is true
+  return draft unless String(existingDraft?.campaign_source_hash ? '') is String(currentSourceHash ? '')
   merged = Object.assign {}, draft
   merged.subject = existingDraft.subject if typeof existingDraft.subject is 'string'
   merged.email_body = existingDraft.email_body if typeof existingDraft.email_body is 'string'
@@ -65,6 +66,7 @@ preserveHumanRevision = (draft, existingDraft) ->
       draft = 
         audience_key: profile.audience_key
         draft_id: draftId
+        campaign_source_hash: sourceMaterial.source_hash ? null
         audience_label: profile.audience_label
         organization: ledgerEntry?.organization ? null
         contact_name: ledgerEntry?.contact_name ? null
@@ -76,10 +78,11 @@ preserveHumanRevision = (draft, existingDraft) ->
         follow_up_note: followUp
         review_required: true
 
-      preserveHumanRevision draft, existingByDraftId[draftId]
+      preserveHumanRevision draft, existingByDraftId[draftId], sourceMaterial.source_hash
 
     payload =
       generated_for: sourceMaterial.campaign_name
+      campaign_source_hash: sourceMaterial.source_hash ? null
       draft_count: drafts.length
       drafts: drafts
       constraints:

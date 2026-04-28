@@ -2,23 +2,23 @@
 
 defaultOrganizations =
   local_food_press:
-    organization: 'Portland Table Notes'
-    contact_name: 'Avery Stone'
+    organization: 'Food Desk Placeholder'
+    contact_name: 'Editorial Contact'
     contact_role: 'Food Editor'
     contact_channel: 'reviewed_email_draft'
   neighborhood_newsletters:
-    organization: 'Eastside Weekend Bulletin'
-    contact_name: 'Mina Torres'
+    organization: 'Neighborhood Bulletin Placeholder'
+    contact_name: 'Community Editor'
     contact_role: 'Community Editor'
     contact_channel: 'reviewed_email_draft'
   community_partners:
-    organization: 'Riverblock Makers Collective'
-    contact_name: 'Jordan Lee'
+    organization: 'Community Partner Placeholder'
+    contact_name: 'Partnership Lead'
     contact_role: 'Partnership Lead'
     contact_channel: 'reviewed_email_draft'
   event_calendars:
-    organization: 'Portland City Events Calendar'
-    contact_name: 'Casey Nguyen'
+    organization: 'Event Calendar Placeholder'
+    contact_name: 'Listings Coordinator'
     contact_role: 'Listings Coordinator'
     contact_channel: 'listing_submission_draft'
 
@@ -46,7 +46,8 @@ defaultOrganizations =
       review_required: true
 
     payload =
-      generated_for: experiment.run?.campaign_name
+      generated_for: audienceProfiles.generated_for ? experiment.run?.campaign_name
+      campaign_source_hash: audienceProfiles.campaign_source_hash ? null
       ledger_count: ledgerEntries.length
       entries: ledgerEntries
       notes:

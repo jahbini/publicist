@@ -19,7 +19,7 @@
   this.step = {
     desc: 'Suggest next publicist actions from SQLite insights and current artifacts.',
     action: async function(L, stepName, M) {
-      var ageDays, audiencesToExpand, contactLedger, contactLedgerKey, decision, draftsNeedingReview, experiment, followUpContacts, i, len, now, payload, ref, ref1, ref10, ref2, ref3, ref4, ref5, ref6, ref7, ref8, ref9, reviewDecisions, reviewDecisionsKey, sqliteInsights, sqliteInsightsKey, staleAfterDays, staleItems;
+      var ageDays, audiencesToExpand, contactLedger, contactLedgerKey, decision, draftsNeedingReview, experiment, followUpContacts, i, len, now, payload, ref, ref1, ref10, ref11, ref12, ref13, ref2, ref3, ref4, ref5, ref6, ref7, ref8, ref9, reviewDecisions, reviewDecisionsKey, sqliteInsights, sqliteInsightsKey, staleAfterDays, staleItems;
       experiment = (ref = M.theLowdown('experiment.yaml')) != null ? ref.value : void 0;
       if (experiment == null) {
         throw new Error(`[${stepName}] Missing experiment.yaml in Memo`);
@@ -94,13 +94,14 @@
         });
       }
       payload = {
-        generated_for: (ref9 = experiment.run) != null ? ref9.campaign_name : void 0,
+        generated_for: (ref9 = reviewDecisions.generated_for) != null ? ref9 : (ref10 = experiment.run) != null ? ref10.campaign_name : void 0,
+        campaign_source_hash: (ref11 = (ref12 = reviewDecisions.campaign_source_hash) != null ? ref12 : contactLedger.campaign_source_hash) != null ? ref11 : null,
         follow_up_contacts: followUpContacts,
         audiences_to_expand: audiencesToExpand,
         drafts_needing_review: draftsNeedingReview,
         stale_items: staleItems,
         summary: {
-          db_available: ((ref10 = sqliteInsights.summary) != null ? ref10.db_available : void 0) === true,
+          db_available: ((ref13 = sqliteInsights.summary) != null ? ref13.db_available : void 0) === true,
           follow_up_contacts_count: followUpContacts.length,
           audiences_to_expand_count: audiencesToExpand.length,
           drafts_needing_review_count: draftsNeedingReview.length,

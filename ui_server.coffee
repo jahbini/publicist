@@ -19,6 +19,15 @@ UI_CONTROL_PATH = path.join(CWD, 'state', 'ui-control.json')
 CONTROL_OVERRIDE_PATH = path.join(CWD, 'control_override.yaml')
 OVERRIDE_PATH = path.join(CWD, 'override.yaml')
 MERGE_RUN_PATH = path.join(CWD, 'state', 'merge-run.json')
+PUBLICIST_SOURCE_RELATIVE_PATH = path.join('source', 'publicist_source.txt')
+PUBLICIST_CAMPAIGN_CONFIG_RELATIVE_PATH = path.join('source', 'publicist_campaign.yaml')
+DEFAULT_PUBLICIST_SOURCE_TEXT = "Describe this campaign here.\n"
+DEFAULT_PUBLICIST_CAMPAIGN_CONFIG_TEXT = """priority_audiences:
+  - technical_press
+  - industry_partners
+  - research_labs
+  - pilot_customers
+"""
 
 readJson = (p, fallback = null) ->
   return fallback unless fs.existsSync(p)
@@ -31,6 +40,20 @@ readText = (p, fallback = '') ->
 writeText = (p, text) ->
   fs.mkdirSync path.dirname(p), { recursive: true }
   fs.writeFileSync p, text, 'utf8'
+
+ensurePublicistSourceFile = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  sourcePath = path.join(base, PUBLICIST_SOURCE_RELATIVE_PATH)
+  unless fs.existsSync(sourcePath)
+    writeText sourcePath, DEFAULT_PUBLICIST_SOURCE_TEXT
+  sourcePath
+
+ensurePublicistCampaignConfigFile = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  configPath = path.join(base, PUBLICIST_CAMPAIGN_CONFIG_RELATIVE_PATH)
+  unless fs.existsSync(configPath)
+    writeText configPath, DEFAULT_PUBLICIST_CAMPAIGN_CONFIG_TEXT
+  configPath
 
 looksLikeExecRoot = (candidate) ->
   return false unless typeof candidate is 'string' and candidate.length
@@ -154,13 +177,14 @@ listPipeDirectories = ->
       false
   names.sort (a, b) -> String(a).localeCompare String(b)
 
-buildPipeSummary = ->
-  current = workspacePipeName(CWD)
+buildPipeSummary = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  current = workspacePipeName(base)
   pipes = (name: name, is_active: name is current for name in listPipeDirectories())
   {
     root: PIPES_ROOT
     current: current
-    workspace: CWD
+    workspace: base
     pipes: pipes
   }
 
@@ -387,8 +411,9 @@ readJsonlTail = (p, maxRows = 80) ->
     try rows.push JSON.parse(line) catch then null
   rows.slice Math.max(rows.length - maxRows, 0)
 
-latestLogStem = ->
-  logDir = path.join(CWD, 'logs')
+latestLogStem = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  logDir = path.join(base, 'logs')
   return null unless fs.existsSync(logDir)
   names = fs.readdirSync(logDir).filter (name) -> /^pipe_\d{2}_\d{2}\.(log|err)$/.test(name)
   return null unless names.length
@@ -399,8 +424,9 @@ latestLogStem = ->
   ordered = Object.keys(stems).sort()
   ordered[ordered.length - 1]
 
-collectStepStates = ->
-  stateDir = path.join(CWD, 'state')
+collectStepStates = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  stateDir = path.join(base, 'state')
   return [] unless fs.existsSync(stateDir)
   names = fs.readdirSync(stateDir).filter (name) -> /^step-.*\.json$/.test(name)
   rows = []
@@ -411,13 +437,15 @@ collectStepStates = ->
   rows.sort (a, b) ->
     String(a.step ? '').localeCompare String(b.step ? '')
 
-readOverride = ->
+readOverride = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
   foundational = {}
-  pipeName = workspacePipeName(CWD)
+  pipeName = workspacePipeName(base)
   inferredModel = inferModelIdFromPipeName(pipeName)
+  overridePath = path.join(base, 'override.yaml')
 
-  parsed = if fs.existsSync(OVERRIDE_PATH)
-    try yaml.load(fs.readFileSync(OVERRIDE_PATH, 'utf8')) ? {} catch then {}
+  parsed = if fs.existsSync(overridePath)
+    try yaml.load(fs.readFileSync(overridePath, 'utf8')) ? {} catch then {}
   else
     {}
 
@@ -431,14 +459,16 @@ readOverride = ->
       parsed.run.model = inferredModel
       needsWrite = true
 
-  if needsWrite or (inferredModel.length and not fs.existsSync(OVERRIDE_PATH))
-    writeText OVERRIDE_PATH, dumpYaml(parsed)
+  if needsWrite or (inferredModel.length and not fs.existsSync(overridePath))
+    writeText overridePath, dumpYaml(parsed)
 
   parsed
 
-readControlOverride = ->
-  return {} unless fs.existsSync CONTROL_OVERRIDE_PATH
-  try yaml.load(fs.readFileSync(CONTROL_OVERRIDE_PATH, 'utf8')) ? {} catch then {}
+readControlOverride = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  controlOverridePath = path.join(base, 'control_override.yaml')
+  return {} unless fs.existsSync controlOverridePath
+  try yaml.load(fs.readFileSync(controlOverridePath, 'utf8')) ? {} catch then {}
 
 readYaml = (p) ->
   target = p
@@ -450,9 +480,10 @@ readYaml = (p) ->
   return {} unless fs.existsSync target
   try yaml.load(fs.readFileSync(target, 'utf8')) ? {} catch then {}
 
-buildControls = ->
-  override = readOverride()
-  controlOverride = readControlOverride()
+buildControls = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  override = readOverride(base)
+  controlOverride = readControlOverride(base)
   uiControl = readUiControl()
   pending = uiControl.pending ? {}
   pipelineName = pending.pipeline ? controlOverride.pipeline ? override.pipeline ? ''
@@ -485,8 +516,8 @@ buildControls = ->
   else
     dumpYaml overrideObject
   recipeText = if pipelineName.length then dumpYaml(recipe) else ''
-  humanOverrideText = if fs.existsSync(path.join(CWD, 'override.yaml')) then readText(path.join(CWD, 'override.yaml'), '') else ''
-  experimentText = if fs.existsSync(path.join(CWD, 'experiment.yaml')) then readText(path.join(CWD, 'experiment.yaml'), '') else ''
+  humanOverrideText = if fs.existsSync(path.join(base, 'override.yaml')) then readText(path.join(base, 'override.yaml'), '') else ''
+  experimentText = if fs.existsSync(path.join(base, 'experiment.yaml')) then readText(path.join(base, 'experiment.yaml'), '') else ''
   uiFields = scanUiFields recipe, controlOverride, uiControl
 
   {
@@ -510,8 +541,9 @@ buildControls = ->
     experiment_text: experimentText
   }
 
-describeOutputFile = (relativePath, runStart = null) ->
-  fullPath = path.join(CWD, relativePath)
+describeOutputFile = (relativePath, runStart = null, workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  fullPath = path.join(base, relativePath)
   exists = fs.existsSync(fullPath)
   stat = if exists then fs.statSync(fullPath) else null
   mtime = if stat? then stat.mtime.toISOString() else null
@@ -529,9 +561,10 @@ describeOutputFile = (relativePath, runStart = null) ->
     is_fresh: fresh
   }
 
-collectExpectedOutputs = (run) ->
-  override = readOverride()
-  controlOverride = readControlOverride()
+collectExpectedOutputs = (run, workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  override = readOverride(base)
+  controlOverride = readControlOverride(base)
   pipeline = controlOverride.pipeline ? override.pipeline ? run?.pipeline ? null
   return { out_files: [], diary_files: [] } unless pipeline?
 
@@ -549,7 +582,7 @@ collectExpectedOutputs = (run) ->
     target = String(spec.target)
     continue if seen.has(target)
     seen.add target
-    row = describeOutputFile target, runStart
+    row = describeOutputFile target, runStart, base
     if /^diary\//.test(target)
       diaryFiles.push row
     else
@@ -560,7 +593,7 @@ collectExpectedOutputs = (run) ->
     diaryAdapter = "diary/diary_#{run.hh_mm}.adapter.txt"
     for target in [diaryBase, diaryAdapter] when not seen.has(target)
       seen.add target
-      diaryFiles.push describeOutputFile target, runStart
+      diaryFiles.push describeOutputFile target, runStart, base
 
   outFiles.sort (a, b) -> String(a.path).localeCompare String(b.path)
   diaryFiles.sort (a, b) -> String(a.path).localeCompare String(b.path)
@@ -578,21 +611,44 @@ isUsableWorkspace = (candidate) ->
     false
 
 resolveStatusWorkspace = (run = null) ->
+  return path.resolve(CWD) if workspacePipeName(CWD)?
   runCwd = String(run?.cwd ? '').trim()
   return path.resolve(runCwd) if isUsableWorkspace(runCwd)
   CWD
+
+publicistArtifactPaths = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  relative = (name) -> path.join('out', name)
+  {
+    source_material: relative('source_material.yaml')
+    audience_profiles: relative('audience_profiles.yaml')
+    contact_ledger: relative('contact_ledger.yaml')
+    message_drafts: relative('message_drafts.yaml')
+    review_decisions: relative('review_decisions.yaml')
+    sqlite_load_report: relative('sqlite_load_report.yaml')
+    sqlite_init_report: relative('sqlite_init_report.yaml')
+    sqlite_write_report: relative('sqlite_write_report.yaml')
+    sqlite_insights: relative('sqlite_insights.yaml')
+    next_actions: relative('next_actions.yaml')
+    research_requests: relative('research_requests.yaml')
+    research_results: relative('research_results.yaml')
+    enriched_drafts: relative('enriched_drafts.yaml')
+    review_packet: relative('review_packet.md')
+  }
 
 resolveReviewDecisionsPaths = (workspacePath = CWD) ->
   base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
   {
     workspace: base
-    decisionsPath: path.join(base, 'out', 'agents', 'publicist', 'review_decisions.yaml')
-    draftsPath: path.join(base, 'out', 'agents', 'publicist', 'message_drafts.yaml')
-    packetPath: path.join(base, 'out', 'agents', 'publicist', 'review_packet.md')
+    decisionsPath: path.join(base, 'out', 'review_decisions.yaml')
+    draftsPath: path.join(base, 'out', 'message_drafts.yaml')
+    enrichedDraftsPath: path.join(base, 'out', 'enriched_drafts.yaml')
+    packetPath: path.join(base, 'out', 'review_packet.md')
   }
 
 readPublicistReviewUi = (workspacePath = CWD) ->
-  { workspace: base, decisionsPath, draftsPath, packetPath } = resolveReviewDecisionsPaths(workspacePath)
+  { workspace: base, decisionsPath, draftsPath, enrichedDraftsPath, packetPath } = resolveReviewDecisionsPaths(workspacePath)
+  artifactPaths = publicistArtifactPaths(base)
 
   decisionsDoc = if fs.existsSync(decisionsPath) then readYaml(decisionsPath) else {}
   decisions = if Array.isArray(decisionsDoc?.decisions) then decisionsDoc.decisions else []
@@ -624,13 +680,17 @@ readPublicistReviewUi = (workspacePath = CWD) ->
     else
       groups.pending_review.push joinedEntry
 
-  reviewPacketPath = if fs.existsSync(packetPath) then path.relative(base, packetPath) else 'out/agents/publicist/review_packet.md'
+  reviewPacketPath = if fs.existsSync(packetPath) then path.relative(base, packetPath) else 'out/review_packet.md'
 
   {
-    path: if fs.existsSync(decisionsPath) then path.relative(base, decisionsPath) else 'out/agents/publicist/review_decisions.yaml'
+    path: if fs.existsSync(decisionsPath) then path.relative(base, decisionsPath) else 'out/review_decisions.yaml'
     workspace: base
-    drafts_path: if fs.existsSync(draftsPath) then path.relative(base, draftsPath) else 'out/agents/publicist/message_drafts.yaml'
+    drafts_path: if fs.existsSync(draftsPath) then path.relative(base, draftsPath) else 'out/message_drafts.yaml'
+    enriched_drafts_path: if fs.existsSync(enrichedDraftsPath) then path.relative(base, enrichedDraftsPath) else 'out/enriched_drafts.yaml'
     review_packet_path: reviewPacketPath
+    source_material_path: artifactPaths.source_material
+    audience_profiles_path: artifactPaths.audience_profiles
+    contact_ledger_path: artifactPaths.contact_ledger
     matched_draft_count: matchedDraftCount
     draft_count: drafts.length
     counts:
@@ -641,19 +701,109 @@ readPublicistReviewUi = (workspacePath = CWD) ->
     groups: groups
   }
 
-readPublicistSqliteInsightsUi = (workspacePath = CWD) ->
+readPublicistEnrichedDraftsUi = (workspacePath = CWD) ->
   base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
-  insightsPath = path.join(base, 'out', 'agents', 'publicist', 'sqlite_insights.yaml')
-  insightsDoc = if fs.existsSync(insightsPath) then readYaml(insightsPath) else {}
+  enrichedPath = path.join(base, 'out', 'enriched_drafts.yaml')
+  doc = if fs.existsSync(enrichedPath) then readYaml(enrichedPath) else {}
+  rows = if Array.isArray(doc?.enriched_drafts) then doc.enriched_drafts else []
+  rowsByDraftId = {}
+  for row in rows when row?.draft_id?
+    rowsByDraftId[row.draft_id] = row
 
   {
-    path: if fs.existsSync(insightsPath) then path.relative(base, insightsPath) else 'out/agents/publicist/sqlite_insights.yaml'
+    path: if fs.existsSync(enrichedPath) then path.relative(base, enrichedPath) else 'out/enriched_drafts.yaml'
     workspace: base
+    summary: doc?.summary ? {}
+    draft_count: doc?.draft_count ? rows.length
+    enriched_count: doc?.enriched_count ? 0
+    enriched_drafts: rows
+    by_draft_id: rowsByDraftId
+  }
+
+readPublicistSqliteInsightsUi = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  insightsPath = path.join(base, 'out', 'sqlite_insights.yaml')
+  insightsDoc = if fs.existsSync(insightsPath) then readYaml(insightsPath) else {}
+  artifactPaths = publicistArtifactPaths(base)
+
+  {
+    path: if fs.existsSync(insightsPath) then path.relative(base, insightsPath) else 'out/sqlite_insights.yaml'
+    workspace: base
+    sqlite_load_report_path: artifactPaths.sqlite_load_report
+    sqlite_init_report_path: artifactPaths.sqlite_init_report
+    sqlite_write_report_path: artifactPaths.sqlite_write_report
     summary: insightsDoc?.summary ? { db_available: false }
     counts_by_audience: if Array.isArray(insightsDoc?.counts_by_audience) then insightsDoc.counts_by_audience else []
     pending_outreach: if Array.isArray(insightsDoc?.pending_outreach) then insightsDoc.pending_outreach else []
     empty_audiences: if Array.isArray(insightsDoc?.empty_audiences) then insightsDoc.empty_audiences else []
     recent_activity: if Array.isArray(insightsDoc?.recent_activity) then insightsDoc.recent_activity else []
+  }
+
+readPublicistResearchRequestsUi = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  requestsPath = path.join(base, 'out', 'research_requests.yaml')
+  requestsDoc = if fs.existsSync(requestsPath) then readYaml(requestsPath) else {}
+  artifactPaths = publicistArtifactPaths(base)
+  requests = if Array.isArray(requestsDoc?.research_requests) then requestsDoc.research_requests else []
+
+  groups =
+    approved_for_research: []
+    rejected: []
+    planned_only: []
+
+  for entry in requests
+    status = String(entry?.status ? 'planned_only').trim().toLowerCase()
+    if status is 'approved_for_research'
+      groups.approved_for_research.push entry
+    else if status is 'rejected'
+      groups.rejected.push entry
+    else
+      groups.planned_only.push entry
+
+  {
+    path: if fs.existsSync(requestsPath) then path.relative(base, requestsPath) else 'out/research_requests.yaml'
+    workspace: base
+    next_actions_path: artifactPaths.next_actions
+    summary: requestsDoc?.summary ? {}
+    counts:
+      approved_for_research: groups.approved_for_research.length
+      rejected: groups.rejected.length
+      planned_only: groups.planned_only.length
+    groups: groups
+  }
+
+readPublicistResearchResultsUi = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  resultsPath = path.join(base, 'out', 'research_results.yaml')
+  resultsDoc = if fs.existsSync(resultsPath) then readYaml(resultsPath) else {}
+  artifactPaths = publicistArtifactPaths(base)
+
+  {
+    path: if fs.existsSync(resultsPath) then path.relative(base, resultsPath) else 'out/research_results.yaml'
+    workspace: base
+    enriched_drafts_path: artifactPaths.enriched_drafts
+    review_packet_path: artifactPaths.review_packet
+    summary: resultsDoc?.summary ? {}
+    results: if Array.isArray(resultsDoc?.results) then resultsDoc.results else []
+    skipped: if Array.isArray(resultsDoc?.skipped) then resultsDoc.skipped else []
+  }
+
+readPublicistSourceUi = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  sourcePath = ensurePublicistSourceFile(base)
+  {
+    path: path.relative(base, sourcePath)
+    workspace: base
+    text: readText(sourcePath, DEFAULT_PUBLICIST_SOURCE_TEXT)
+  }
+
+readPublicistCampaignConfigUi = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  configPath = ensurePublicistCampaignConfigFile(base)
+  {
+    path: path.relative(base, configPath)
+    workspace: base
+    text: readText(configPath, DEFAULT_PUBLICIST_CAMPAIGN_CONFIG_TEXT)
   }
 
 saveReviewDecisionUpdate = (workspacePath, payload) ->
@@ -734,31 +884,123 @@ saveDraftUpdate = (workspacePath, payload) ->
     draft: nextEntry
   }
 
+saveResearchRequestUpdate = (workspacePath, payload) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  requestsPath = path.join(base, 'out', 'research_requests.yaml')
+  return { ok: false, error: 'research requests file not found', path: requestsPath } unless fs.existsSync(requestsPath)
+
+  doc = readYaml(requestsPath)
+  requests = if Array.isArray(doc?.research_requests) then doc.research_requests.slice() else []
+  requestId = String(payload?.request_id ? '').trim()
+  return { ok: false, error: 'request_id is required', path: requestsPath } unless requestId.length
+
+  statusText = String(payload?.status ? '').trim().toLowerCase()
+  normalizedStatus = switch statusText
+    when 'approved_for_research', 'approve', 'approved' then 'approved_for_research'
+    when 'rejected', 'reject' then 'rejected'
+    when 'planned_only', 'pending' then 'planned_only'
+    else null
+  return { ok: false, error: "invalid status '#{statusText}'", path: requestsPath } unless normalizedStatus?
+
+  entryIndex = requests.findIndex (entry) -> String(entry?.request_id ? '').trim() is requestId
+  return { ok: false, error: "request_id not found '#{requestId}'", path: requestsPath } unless entryIndex >= 0
+
+  currentEntry = requests[entryIndex] ? {}
+  nextEntry = Object.assign {}, currentEntry,
+    status: normalizedStatus
+    review_required: true
+    reviewed_at: new Date().toISOString()
+
+  if typeof payload.allowed_domains is 'string'
+    nextEntry.allowed_domains = String(payload.allowed_domains)
+      .split(',')
+      .map((value) -> String(value ? '').trim())
+      .filter((value) -> value.length)
+  else if Array.isArray(payload.allowed_domains)
+    nextEntry.allowed_domains = payload.allowed_domains
+      .map((value) -> String(value ? '').trim())
+      .filter((value) -> value.length)
+
+  if typeof payload.reviewer_notes is 'string'
+    nextEntry.reviewer_notes = payload.reviewer_notes
+
+  requests[entryIndex] = nextEntry
+  nextDoc = if doc? and typeof doc is 'object' and not Array.isArray(doc) then Object.assign({}, doc) else {}
+  nextDoc.research_requests = requests
+  nextDoc.request_count = requests.length
+  writeText requestsPath, dumpYaml(nextDoc)
+
+  {
+    ok: true
+    workspace: base
+    path: requestsPath
+    request: nextEntry
+  }
+
+savePublicistSourceUpdate = (workspacePath, payload) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  sourcePath = ensurePublicistSourceFile(base)
+  text = if typeof payload?.text is 'string' then payload.text else ''
+  writeText sourcePath, text
+  {
+    ok: true
+    workspace: base
+    path: sourcePath
+    text: readText(sourcePath, '')
+  }
+
+savePublicistCampaignConfigUpdate = (workspacePath, payload) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  configPath = path.join(base, PUBLICIST_CAMPAIGN_CONFIG_RELATIVE_PATH)
+  text = if typeof payload?.text is 'string' then payload.text else ''
+  try
+    parsed = yaml.load(text)
+    throw new Error 'campaign config must parse to an object or array' unless parsed? and typeof parsed is 'object'
+  catch err
+    return {
+      ok: false
+      error: "yaml parse failed: #{String(err?.message ? err)}"
+      workspace: base
+      path: configPath
+    }
+
+  writeText configPath, text
+  {
+    ok: true
+    workspace: base
+    path: configPath
+    text: readText(configPath, '')
+  }
+
 buildStatus = ->
   run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
   statusWorkspace = resolveStatusWorkspace(run)
   mergeRun = readMergeRun()
-  pipelineState = readJson path.join(CWD, 'pipeline.json'), null
-  expectedOutputs = collectExpectedOutputs(run)
-  pipeSummary = buildPipeSummary()
-  loraRemaining = readJson path.join(CWD, 'out', 'lora_remaining_count.json'), null
-  oracleRemaining = readJson path.join(CWD, 'out', 'oracle_remaining_count.json'), null
+  pipelineState = readJson path.join(statusWorkspace, 'pipeline.json'), null
+  expectedOutputs = collectExpectedOutputs(run, statusWorkspace)
+  pipeSummary = buildPipeSummary(statusWorkspace)
+  loraRemaining = readJson path.join(statusWorkspace, 'out', 'lora_remaining_count.json'), null
+  oracleRemaining = readJson path.join(statusWorkspace, 'out', 'oracle_remaining_count.json'), null
   storiesRemaining = if oracleRemaining? then oracleRemaining else loraRemaining
-  events = readJsonlTail path.join(CWD, 'state', 'ui-events.jsonl')
-  steps = collectStepStates()
-  stem = if run?.logdir? then String(run.logdir) else latestLogStem()
-  latestLog = if stem? then readText(path.join(CWD, 'logs', "#{stem}.log")) else ''
-  latestErr = if stem? then readText(path.join(CWD, 'logs', "#{stem}.err")) else ''
+  events = readJsonlTail path.join(statusWorkspace, 'state', 'ui-events.jsonl')
+  steps = collectStepStates(statusWorkspace)
+  stem = if run?.logdir? then String(run.logdir) else latestLogStem(statusWorkspace)
+  latestLog = if stem? then readText(path.join(statusWorkspace, 'logs', "#{stem}.log")) else ''
+  latestErr = if stem? then readText(path.join(statusWorkspace, 'logs', "#{stem}.err")) else ''
 
   {
     run: run
+    exec_root: EXEC_ROOT
+    server_cwd: CWD
+    active_workspace: statusWorkspace
+    active_exec: String(run?.exec ? EXEC_ROOT)
     merge_run: mergeRun
     pipeline_state: pipelineState
     pipe: pipeSummary
     lora_remaining_count: loraRemaining
     oracle_remaining_count: oracleRemaining
     stories_remaining_count: storiesRemaining
-    controls: buildControls()
+    controls: buildControls(statusWorkspace)
     steps: steps
     events: events
     latest_log_stem: stem
@@ -767,7 +1009,12 @@ buildStatus = ->
     out_files: expectedOutputs.out_files
     diary_files: expectedOutputs.diary_files
     publicist_review: readPublicistReviewUi(statusWorkspace)
+    publicist_source: readPublicistSourceUi(statusWorkspace)
+    publicist_campaign_config: readPublicistCampaignConfigUi(statusWorkspace)
+    publicist_enriched_drafts: readPublicistEnrichedDraftsUi(statusWorkspace)
     publicist_sqlite_insights: readPublicistSqliteInsightsUi(statusWorkspace)
+    publicist_research_requests: readPublicistResearchRequestsUi(statusWorkspace)
+    publicist_research_results: readPublicistResearchResultsUi(statusWorkspace)
   }
 
 isAllowedFilePath = (relativePath) ->
@@ -776,14 +1023,16 @@ isAllowedFilePath = (relativePath) ->
   return false if normalized.startsWith('..') or path.isAbsolute(normalized)
   /^logs\//.test(normalized) or /^out\//.test(normalized) or /^diary\//.test(normalized) or /^build\//.test(normalized)
 
-readViewerFile = (relativePath) ->
+readViewerFile = (relativePath, workspacePath = CWD) ->
   return null unless isAllowedFilePath(relativePath)
-  fullPath = path.join(CWD, relativePath)
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  fullPath = path.join(base, relativePath)
   return null unless fs.existsSync(fullPath)
   stat = fs.statSync(fullPath)
   return null unless stat.isFile()
   {
     path: relativePath
+    workspace: base
     size: stat.size
     mtime: stat.mtime.toISOString()
     text: readText(fullPath, '')
@@ -840,6 +1089,7 @@ seedUiRun = (launch, override) ->
     pipeline: current.pipeline ? override.pipeline ? null
     pid: current.pid ? launch.pid
     cwd: current.cwd ? CWD
+    exec: current.exec ? EXEC_ROOT
     hh_mm: current.hh_mm ? launch.hh_mm
     logdir: current.logdir ? launch.logdir
     status: current.status ? 'launching'
@@ -1330,8 +1580,55 @@ handleDraftUpdate = (req, res) ->
 
   sendJson res, 200, result
 
+handleResearchRequestUpdate = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  workspace = resolveStatusWorkspace(run)
+  result = saveResearchRequestUpdate(workspace, payload)
+  return sendJson(res, 400, result) unless result.ok is true
+
+  sendJson res, 200, result
+
+handlePublicistSourceUpdate = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  workspace = resolveStatusWorkspace(run)
+  result = savePublicistSourceUpdate(workspace, payload)
+  return sendJson(res, 400, result) unless result.ok is true
+
+  sendJson res, 200, result
+
+handlePublicistCampaignConfigUpdate = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  workspace = resolveStatusWorkspace(run)
+  result = savePublicistCampaignConfigUpdate(workspace, payload)
+  return sendJson(res, 400, result) unless result.ok is true
+
+  sendJson res, 200, result
+
 handleClearPipelineState = (req, res) ->
-  pipelinePath = path.join(CWD, 'pipeline.json')
+  run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  workspace = resolveStatusWorkspace(run)
+  pipelinePath = path.join(workspace, 'pipeline.json')
   removed = false
   if fs.existsSync(pipelinePath)
     fs.unlinkSync pipelinePath
@@ -1340,6 +1637,7 @@ handleClearPipelineState = (req, res) ->
   sendJson res, 200,
     ok: true
     removed: removed
+    workspace: workspace
 
 handleSwitchPipe = (req, res) ->
   bodyText = await readRequestBody req
@@ -1412,7 +1710,9 @@ server = http.createServer (req, res) ->
   if url.startsWith('/api/file?')
     query = new URL(url, 'http://127.0.0.1').searchParams
     relativePath = query.get('path')
-    payload = readViewerFile(relativePath)
+    run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+    workspace = resolveStatusWorkspace(run)
+    payload = readViewerFile(relativePath, workspace)
     return sendJson(res, 404, { ok: false, error: 'file not found' }) unless payload?
     return sendJson res, 200, { ok: true, file: payload }
   if url is '/api/launch' and req.method is 'POST'
@@ -1437,6 +1737,21 @@ server = http.createServer (req, res) ->
         error: String(err?.message ? err)
   if url is '/api/message_draft' and req.method is 'POST'
     return Promise.resolve(handleDraftUpdate(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/research_request' and req.method is 'POST'
+    return Promise.resolve(handleResearchRequestUpdate(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/publicist_source' and req.method is 'POST'
+    return Promise.resolve(handlePublicistSourceUpdate(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/publicist_campaign_config' and req.method is 'POST'
+    return Promise.resolve(handlePublicistCampaignConfigUpdate(req, res)).catch (err) ->
       sendJson res, 500,
         ok: false
         error: String(err?.message ? err)

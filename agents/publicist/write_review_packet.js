@@ -22,7 +22,7 @@
   this.step = {
     desc: 'Write a human review packet for draft-only outreach.',
     action: async function(L, stepName, M) {
-      var approvedLines, audienceLines, audienceProfiles, audienceProfilesKey, contactLedger, contactLedgerKey, countsByAudience, decisionLines, draftLines, emptyAudiences, experiment, ledgerLines, messageDrafts, messageDraftsKey, nextActionLines, nextActions, nextActionsKey, packet, pendingLines, pendingOutreach, recentActivity, ref, ref1, ref10, ref11, ref12, ref13, ref14, ref15, ref16, ref17, ref18, ref19, ref2, ref20, ref21, ref22, ref23, ref24, ref25, ref26, ref27, ref28, ref29, ref3, ref30, ref31, ref32, ref33, ref34, ref4, ref5, ref6, ref7, ref8, ref9, rejectedLines, reviewDeadline, reviewDecisions, reviewDecisionsKey, reviewers, sourceMaterial, sourceMaterialKey, sqliteInsights, sqliteInsightsLines, sqliteInsightsTarget, sqliteLoadReport, sqliteLoadReportKey, sqliteSummaryLines;
+      var approvedLines, audienceLines, audienceProfiles, audienceProfilesKey, contactLedger, contactLedgerKey, countsByAudience, decisionLines, draftLines, emptyAudiences, enrichedDrafts, enrichedDraftsKey, enrichmentLines, experiment, ledgerLines, messageDrafts, messageDraftsKey, nextActionLines, nextActions, nextActionsKey, packet, pendingLines, pendingOutreach, recentActivity, ref, ref1, ref10, ref11, ref12, ref13, ref14, ref15, ref16, ref17, ref18, ref19, ref2, ref20, ref21, ref22, ref23, ref24, ref25, ref26, ref27, ref28, ref29, ref3, ref30, ref31, ref32, ref33, ref34, ref35, ref36, ref37, ref38, ref39, ref4, ref40, ref41, ref42, ref43, ref44, ref45, ref46, ref47, ref48, ref49, ref5, ref6, ref7, ref8, ref9, rejectedLines, researchRequestLines, researchRequests, researchRequestsKey, researchResultLines, researchResults, researchResultsKey, reviewDeadline, reviewDecisions, reviewDecisionsKey, reviewers, sourceMaterial, sourceMaterialKey, sqliteInsights, sqliteInsightsLines, sqliteInsightsTarget, sqliteLoadReport, sqliteLoadReportKey, sqliteSummaryLines;
       experiment = (ref = M.theLowdown('experiment.yaml')) != null ? ref.value : void 0;
       if (experiment == null) {
         throw new Error(`[${stepName}] Missing experiment.yaml in Memo`);
@@ -34,6 +34,9 @@
       reviewDecisionsKey = 'review_decisions';
       sqliteLoadReportKey = 'sqlite_load_report';
       nextActionsKey = 'next_actions';
+      researchRequestsKey = 'research_requests';
+      researchResultsKey = 'research_results';
+      enrichedDraftsKey = 'enriched_drafts';
       sqliteInsightsTarget = (ref1 = experiment.artifacts) != null ? (ref2 = ref1.sqlite_insights) != null ? ref2.target : void 0 : void 0;
       sourceMaterial = (await L.need(sourceMaterialKey));
       audienceProfiles = (await L.need(audienceProfilesKey));
@@ -42,6 +45,9 @@
       reviewDecisions = (await L.need(reviewDecisionsKey));
       sqliteLoadReport = (await L.need(sqliteLoadReportKey));
       nextActions = (await L.need(nextActionsKey));
+      researchRequests = (await L.need(researchRequestsKey));
+      researchResults = (await L.need(researchResultsKey));
+      enrichedDrafts = (await L.need(enrichedDraftsKey));
       sqliteInsights = sqliteInsightsTarget != null ? (ref3 = M.theLowdown(sqliteInsightsTarget)) != null ? ref3.value : void 0 : null;
       if (sourceMaterial == null) {
         throw new Error(`[${stepName}] Missing required artifact '${sourceMaterialKey}'`);
@@ -63,6 +69,15 @@
       }
       if ((nextActions != null ? nextActions.summary : void 0) == null) {
         throw new Error(`[${stepName}] Missing required artifact '${nextActionsKey}'`);
+      }
+      if (!Array.isArray(researchRequests != null ? researchRequests.research_requests : void 0)) {
+        throw new Error(`[${stepName}] Missing required artifact '${researchRequestsKey}'`);
+      }
+      if (!Array.isArray(researchResults != null ? researchResults.results : void 0)) {
+        throw new Error(`[${stepName}] Missing required artifact '${researchResultsKey}'`);
+      }
+      if (!Array.isArray(enrichedDrafts != null ? enrichedDrafts.enriched_drafts : void 0)) {
+        throw new Error(`[${stepName}] Missing required artifact '${enrichedDraftsKey}'`);
       }
       reviewers = (ref4 = M.getStepParam(stepName, 'reviewers')) != null ? ref4 : [];
       reviewDeadline = M.getStepParam(stepName, 'review_deadline');
@@ -169,18 +184,111 @@
           return `- ${row.draft_id}: age=${(ref30 = row.age_days) != null ? ref30 : 'n/a'}d / ${(ref31 = row.contact_name) != null ? ref31 : 'unknown'} / ${(ref32 = row.organization) != null ? ref32 : 'unknown'}`;
         }).join("\n") : "- none")
       ];
+      researchRequestLines = [
+        `- request_count: ${(ref30 = (ref31 = researchRequests.request_count) != null ? ref31 : researchRequests.research_requests.length) != null ? ref30 : 0}`,
+        `- planned_only: ${((ref32 = researchRequests.summary) != null ? ref32.planned_only : void 0) === true}`,
+        "",
+        (researchRequests.research_requests.length ? researchRequests.research_requests.map(function(row) {
+          var ref33,
+        ref34,
+        ref35,
+        ref36,
+        ref37,
+        ref38;
+          return [`- ${row.request_id}: ${row.research_goal}`,
+        `  audience=${(ref33 = row.audience) != null ? ref33 : 'n/a'}`,
+        `  organization=${(ref34 = row.organization) != null ? ref34 : 'n/a'}`,
+        `  contact_name=${(ref35 = row.contact_name) != null ? ref35 : 'n/a'}`,
+        `  search_terms=${((ref36 = row.suggested_search_terms) != null ? ref36 : []).join(' | ')}`,
+        `  allowed_domains=${((ref37 = row.allowed_domains) != null ? ref37 : []).join(' | ')}`,
+        `  status=${(ref38 = row.status) != null ? ref38 : 'n/a'} review_required=${row.review_required}`].join("\n");
+        }).join("\n") : "- none")
+      ];
+      researchResultLines = [
+        `- approved_request_count: ${(ref33 = (ref34 = researchResults.summary) != null ? ref34.approved_request_count : void 0) != null ? ref33 : 0}`,
+        `- fetched_result_count: ${(ref35 = (ref36 = researchResults.summary) != null ? ref36.fetched_result_count : void 0) != null ? ref35 : 0}`,
+        `- skipped_count: ${(ref37 = (ref38 = researchResults.summary) != null ? ref38.skipped_count : void 0) != null ? ref37 : 0}`,
+        "",
+        "### Fetched Results",
+        "",
+        (researchResults.results.length ? researchResults.results.map(function(row) {
+          var ref39,
+        ref40,
+        ref41,
+        ref42,
+        ref43;
+          return [`- ${row.request_id}: ${row.url}`,
+        `  status_code=${(ref39 = row.status_code) != null ? ref39 : 'n/a'} fetched_at=${(ref40 = row.fetched_at) != null ? ref40 : 'n/a'}`,
+        `  title=${(ref41 = row.title) != null ? ref41 : ''}`,
+        `  excerpt=${(ref42 = row.short_text_excerpt) != null ? ref42 : ''}`,
+        `  errors=${((ref43 = row.errors) != null ? ref43 : []).join(' | ')}`].join("\n");
+        }).join("\n") : "- none"),
+        "",
+        "### Skipped Requests",
+        "",
+        (((ref39 = researchResults.skipped) != null ? ref39.length : void 0) ? researchResults.skipped.map(function(row) {
+          var ref40;
+          return `- ${row.request_id}: ${(ref40 = row.reason) != null ? ref40 : 'unknown'}`;
+        }).join("\n") : "- none")
+      ];
+      enrichmentLines = [
+        `- drafts_with_research: ${(ref40 = (ref41 = enrichedDrafts.summary) != null ? ref41.drafts_with_research : void 0) != null ? ref40 : 0}`,
+        `- drafts_without_research: ${(ref42 = (ref43 = enrichedDrafts.summary) != null ? ref43.drafts_without_research : void 0) != null ? ref42 : 0}`,
+        `- suggestions_only: ${((ref44 = enrichedDrafts.summary) != null ? ref44.suggestions_only : void 0) === true}`,
+        "",
+        (enrichedDrafts.enriched_drafts.length ? enrichedDrafts.enriched_drafts.map(function(row) {
+          var ref45,
+        ref46,
+        ref47,
+        ref48,
+        ref49,
+        ref50,
+        ref51,
+        ref52,
+        ref53;
+          return [
+            `### ${row.draft_id}`,
+            "",
+            `- audience: ${(ref45 = row.audience_label) != null ? ref45 : 'n/a'}`,
+            `- organization: ${(ref46 = row.organization) != null ? ref46 : 'n/a'}`,
+            `- contact_name: ${(ref47 = row.contact_name) != null ? ref47 : 'n/a'}`,
+            `- decision: ${(ref48 = row.decision) != null ? ref48 : 'n/a'}`,
+            `- approved_for_send: ${row.approved_for_send === true}`,
+            `- matched_result_count: ${(ref49 = row.matched_result_count) != null ? ref49 : 0}`,
+            `- matched_request_ids: ${((ref50 = row.matched_request_ids) != null ? ref50 : []).join(' | ') || 'none'}`,
+            "",
+            "#### Suggested Improvements",
+            "",
+            (((ref51 = row.suggested_improvements) != null ? ref51.length : void 0) ? row.suggested_improvements.map(function(item) {
+              return `- ${item}`;
+            }).join("\n") : "- none"),
+            "",
+            "#### Additional Talking Points",
+            "",
+            (((ref52 = row.additional_talking_points) != null ? ref52.length : void 0) ? row.additional_talking_points.map(function(item) {
+              return `- ${item}`;
+            }).join("\n") : "- none"),
+            "",
+            "#### Relevant Facts",
+            "",
+            (((ref53 = row.relevant_facts) != null ? ref53.length : void 0) ? row.relevant_facts.map(function(item) {
+              return `- ${item}`;
+            }).join("\n") : "- none")
+          ].join("\n");
+        }).join("\n\n") : "- none")
+      ];
       draftLines = messageDrafts.drafts.map(function(draft) {
-        var ref30, ref31, ref32, ref33;
-        return [`## ${draft.audience_label}`, "", `Draft ID: ${(ref30 = draft.draft_id) != null ? ref30 : 'TBD'}`, `Organization: ${(ref31 = draft.organization) != null ? ref31 : 'TBD'}`, `Contact: ${(ref32 = draft.contact_name) != null ? ref32 : 'TBD'}${draft.contact_role != null ? ` (${draft.contact_role})` : ''}`, `Channel: ${(ref33 = draft.contact_channel) != null ? ref33 : 'TBD'}`, "", `Subject: ${draft.subject}`, "", `${draft.email_body}`, "", `Follow-up note: ${draft.follow_up_note}`].join("\n");
+        var ref45, ref46, ref47, ref48;
+        return [`## ${draft.audience_label}`, "", `Draft ID: ${(ref45 = draft.draft_id) != null ? ref45 : 'TBD'}`, `Organization: ${(ref46 = draft.organization) != null ? ref46 : 'TBD'}`, `Contact: ${(ref47 = draft.contact_name) != null ? ref47 : 'TBD'}${draft.contact_role != null ? ` (${draft.contact_role})` : ''}`, `Channel: ${(ref48 = draft.contact_channel) != null ? ref48 : 'TBD'}`, "", `Subject: ${draft.subject}`, "", `${draft.email_body}`, "", `Follow-up note: ${draft.follow_up_note}`].join("\n");
       });
       packet = joinLines([
         "# Publicist Review Packet",
         "",
         `Campaign: ${sourceMaterial.campaign_name}`,
         `Brand: ${sourceMaterial.brand_name}`,
-        `Launch city: ${(ref30 = sourceMaterial.launch_city) != null ? ref30 : 'TBD'}`,
-        `Announcement date: ${(ref31 = sourceMaterial.announcement_date) != null ? ref31 : 'TBD'}`,
-        `Review owner: ${(ref32 = (ref33 = experiment.run) != null ? ref33.review_owner : void 0) != null ? ref32 : 'unassigned'}`,
+        `Launch city: ${(ref45 = sourceMaterial.launch_city) != null ? ref45 : 'TBD'}`,
+        `Announcement date: ${(ref46 = sourceMaterial.announcement_date) != null ? ref46 : 'TBD'}`,
+        `Review owner: ${(ref47 = (ref48 = experiment.run) != null ? ref48.review_owner : void 0) != null ? ref47 : 'unassigned'}`,
         `Review deadline: ${reviewDeadline != null ? reviewDeadline : 'TBD'}`,
         "",
         "## Review Gates",
@@ -198,7 +306,7 @@
         "",
         "## Source Highlights",
         "",
-        ((ref34 = sourceMaterial.highlights) != null ? ref34 : []).map(function(line) {
+        ((ref49 = sourceMaterial.highlights) != null ? ref49 : []).map(function(line) {
           return `- ${line}`;
         }).join("\n"),
         "",
@@ -243,6 +351,18 @@
         "## Next Actions",
         "",
         nextActionLines.join("\n"),
+        "",
+        "## Research Requests",
+        "",
+        researchRequestLines.join("\n"),
+        "",
+        "## Research Results",
+        "",
+        researchResultLines.join("\n"),
+        "",
+        "## Research-Enhanced Suggestions",
+        "",
+        enrichmentLines.join("\n"),
         "",
         "## Draft Messages",
         "",

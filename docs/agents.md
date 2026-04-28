@@ -35,3 +35,10 @@ review gate.
 
 This scaffold does not implement a live CLI, HTTP lookup path, or email
 sending. It is documentation and draft configuration only.
+
+## Workspaces
+
+Publicist campaign content should live in the active workspace rather than in
+shared repo fixtures. Each pipe directory acts as its own campaign workspace,
+with `source/publicist_source.txt` defining the local campaign text and
+`out/` holding that workspace's generated artifacts.
