@@ -806,6 +806,19 @@ readPublicistCampaignConfigUi = (workspacePath = CWD) ->
     text: readText(configPath, DEFAULT_PUBLICIST_CAMPAIGN_CONFIG_TEXT)
   }
 
+readPublicistAudienceSuggestionsUi = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  suggestionsPath = path.join(base, 'out', 'audience_suggestions.yaml')
+  doc = if fs.existsSync(suggestionsPath) then readYaml(suggestionsPath) else {}
+  {
+    path: if fs.existsSync(suggestionsPath) then path.relative(base, suggestionsPath) else 'out/audience_suggestions.yaml'
+    workspace: base
+    summary: doc?.summary ? {}
+    audience_suggestions: if Array.isArray(doc?.audience_suggestions) then doc.audience_suggestions else []
+    configured_audience_hints: if Array.isArray(doc?.configured_audience_hints) then doc.configured_audience_hints else []
+    configured_priority_audiences: if Array.isArray(doc?.configured_priority_audiences) then doc.configured_priority_audiences else []
+  }
+
 saveReviewDecisionUpdate = (workspacePath, payload) ->
   { workspace, decisionsPath } = resolveReviewDecisionsPaths(workspacePath)
   return { ok: false, error: 'review decisions file not found', path: decisionsPath } unless fs.existsSync(decisionsPath)
@@ -972,6 +985,27 @@ savePublicistCampaignConfigUpdate = (workspacePath, payload) ->
     text: readText(configPath, '')
   }
 
+addAudienceSuggestionToCampaignConfig = (workspacePath, payload) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  configPath = ensurePublicistCampaignConfigFile(base)
+  audienceName = String(payload?.name ? '').trim()
+  return { ok: false, error: 'name is required', workspace: base, path: configPath } unless audienceName.length
+
+  doc = readYaml(configPath)
+  doc = {} unless doc? and typeof doc is 'object' and not Array.isArray(doc)
+  priorities = if Array.isArray(doc.priority_audiences) then doc.priority_audiences.slice() else []
+  unless priorities.includes(audienceName)
+    priorities.push audienceName
+  doc.priority_audiences = priorities
+  writeText configPath, dumpYaml(doc)
+  {
+    ok: true
+    workspace: base
+    path: configPath
+    added: audienceName
+    text: readText(configPath, '')
+  }
+
 buildStatus = ->
   run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
   statusWorkspace = resolveStatusWorkspace(run)
@@ -1011,6 +1045,7 @@ buildStatus = ->
     publicist_review: readPublicistReviewUi(statusWorkspace)
     publicist_source: readPublicistSourceUi(statusWorkspace)
     publicist_campaign_config: readPublicistCampaignConfigUi(statusWorkspace)
+    publicist_audience_suggestions: readPublicistAudienceSuggestionsUi(statusWorkspace)
     publicist_enriched_drafts: readPublicistEnrichedDraftsUi(statusWorkspace)
     publicist_sqlite_insights: readPublicistSqliteInsightsUi(statusWorkspace)
     publicist_research_requests: readPublicistResearchRequestsUi(statusWorkspace)
@@ -1625,6 +1660,21 @@ handlePublicistCampaignConfigUpdate = (req, res) ->
 
   sendJson res, 200, result
 
+handleAddAudienceSuggestion = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  workspace = resolveStatusWorkspace(run)
+  result = addAudienceSuggestionToCampaignConfig(workspace, payload)
+  return sendJson(res, 400, result) unless result.ok is true
+
+  sendJson res, 200, result
+
 handleClearPipelineState = (req, res) ->
   run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
   workspace = resolveStatusWorkspace(run)
@@ -1752,6 +1802,11 @@ server = http.createServer (req, res) ->
         error: String(err?.message ? err)
   if url is '/api/publicist_campaign_config' and req.method is 'POST'
     return Promise.resolve(handlePublicistCampaignConfigUpdate(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/publicist_campaign_add_audience' and req.method is 'POST'
+    return Promise.resolve(handleAddAudienceSuggestion(req, res)).catch (err) ->
       sendJson res, 500,
         ok: false
         error: String(err?.message ? err)

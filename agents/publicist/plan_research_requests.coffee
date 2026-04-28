@@ -19,6 +19,54 @@ makeSearchTerms = (parts...) ->
     terms.push text
   terms
 
+makeSuggestedDomains = (audience, researchGoal, searchTerms = []) ->
+  joined = [
+    String(audience ? '')
+    String(researchGoal ? '')
+    (searchTerms ? []).join(' ')
+  ].join(' ').toLowerCase()
+
+  if /(space|orbital|aerospace|structure|structural|architecture|robot|assembly)/.test(joined)
+    return [
+      { domain: 'nasa.gov', reason: 'Primary space research and engineering source.', confidence: 'high' }
+      { domain: 'esa.int', reason: 'European space engineering and mission context.', confidence: 'high' }
+      { domain: 'aiaa.org', reason: 'Aerospace and astronautics professional community.', confidence: 'medium' }
+      { domain: 'space.com', reason: 'Accessible space industry coverage and reporting.', confidence: 'medium' }
+    ]
+
+  if /(green cleaning|bamboo|sustainab|cleaning|eco|environmental)/.test(joined)
+    return [
+      { domain: 'epa.gov', reason: 'Environmental standards and official guidance.', confidence: 'high' }
+      { domain: 'acs.org', reason: 'Chemistry and materials context.', confidence: 'medium' }
+      { domain: 'greenbiz.com', reason: 'Sustainability and business coverage.', confidence: 'medium' }
+    ]
+
+  if /(philosophy|spiritual|consciousness|ai consciousness|mind|ethics)/.test(joined)
+    return [
+      { domain: 'plato.stanford.edu', reason: 'Authoritative philosophy reference source.', confidence: 'high' }
+      { domain: 'iai.tv', reason: 'Contemporary philosophy and ideas publication.', confidence: 'medium' }
+      { domain: 'philosophybasics.com', reason: 'Accessible overview material for framing.', confidence: 'low' }
+    ]
+
+  if /(writing|writer|essay|author|story|substack|jim|st\. john|st john)/.test(joined)
+    return [
+      { domain: 'substack.com', reason: 'Independent writing and publication ecosystem.', confidence: 'medium' }
+      { domain: 'medium.com', reason: 'Broad writing and essay distribution platform.', confidence: 'medium' }
+      { domain: 'writersdigest.com', reason: 'Writing craft and publishing audience.', confidence: 'medium' }
+    ]
+
+  if /(arts|music|studio|composition|performance|immersive|resonance|venue|curator)/.test(joined)
+    return [
+      { domain: 'thewire.co.uk', reason: 'Experimental music and arts coverage.', confidence: 'medium' }
+      { domain: 'residentadvisor.net', reason: 'Performance, venue, and program context.', confidence: 'medium' }
+      { domain: 'artforum.com', reason: 'Contemporary arts and curatorial framing.', confidence: 'low' }
+    ]
+
+  [
+    { domain: 'substack.com', reason: 'Useful general publication and newsletter discovery source.', confidence: 'low' }
+    { domain: 'medium.com', reason: 'General writing and commentary discovery source.', confidence: 'low' }
+  ]
+
 @step =
   desc: 'Plan publicist research requests without performing web access.'
 
@@ -72,6 +120,7 @@ makeSearchTerms = (parts...) ->
       if sameCampaign
         merged = Object.assign {}, payload
         merged.suggested_search_terms = existingEntry.suggested_search_terms if Array.isArray(existingEntry.suggested_search_terms)
+        merged.suggested_allowed_domains = existingEntry.suggested_allowed_domains if Array.isArray(existingEntry.suggested_allowed_domains)
         for field in ['status', 'allowed_domains', 'reviewer_notes', 'reviewed_at', 'review_required']
           merged[field] = existingEntry[field] if existingEntry[field]?
         requests.push merged
@@ -97,6 +146,17 @@ makeSearchTerms = (parts...) ->
           experiment.run?.campaign_name
           experiment.run?.launch_city
         )
+        suggested_allowed_domains: makeSuggestedDomains(
+          audience
+          'Gather context that would improve a reviewed follow-up plan for an already approved target.'
+          makeSearchTerms(
+            row.organization
+            row.contact_name
+            audience
+            experiment.run?.campaign_name
+            experiment.run?.launch_city
+          )
+        )
         allowed_domains: []
         status: 'planned_only'
         review_required: true
@@ -116,6 +176,17 @@ makeSearchTerms = (parts...) ->
           profile?.rationale
           experiment.run?.campaign_name
           experiment.run?.launch_city
+        )
+        suggested_allowed_domains: makeSuggestedDomains(
+          row.audience_label
+          'Find better-fit outlets, editors, or context to expand coverage for an audience with zero approved drafts.'
+          makeSearchTerms(
+            row.audience_label
+            profile?.angle
+            profile?.rationale
+            experiment.run?.campaign_name
+            experiment.run?.launch_city
+          )
         )
         allowed_domains: []
         status: 'planned_only'
@@ -138,6 +209,17 @@ makeSearchTerms = (parts...) ->
           audience
           profile?.angle
           experiment.run?.campaign_name
+        )
+        suggested_allowed_domains: makeSuggestedDomains(
+          audience
+          'Collect background context that would help a human reviewer strengthen or reframe a pending draft.'
+          makeSearchTerms(
+            row.organization
+            row.contact_name
+            audience
+            profile?.angle
+            experiment.run?.campaign_name
+          )
         )
         allowed_domains: []
         status: 'planned_only'
@@ -163,6 +245,15 @@ makeSearchTerms = (parts...) ->
             "#{audienceName} outreach opportunities"
             "#{audienceName} relevant organizations"
           ]
+          suggested_allowed_domains: makeSuggestedDomains(
+            audienceName
+            'General background and positioning research for this audience.'
+            [
+              "#{audienceName} publications"
+              "#{audienceName} outreach opportunities"
+              "#{audienceName} relevant organizations"
+            ]
+          )
           allowed_domains: []
           status: 'planned_only'
           review_required: true

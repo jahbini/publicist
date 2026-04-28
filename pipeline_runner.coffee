@@ -679,6 +679,27 @@ createStepLedger = (memo, stepName, resolveArtifact, artifactSpecFor, uiRecorder
 
       entry = memo.theLowdown artifactKey
       value = entry?.value
+      if value is undefined
+        spec = artifactSpecFor artifactKey
+        source = if isPlainObject(spec) then spec.source ? spec.key else spec
+        target = if isPlainObject(spec) then spec.target else null
+
+        if typeof source is 'string'
+          debug "need checking source key", source
+          srcEntry = memo.theLowdown source
+          value = srcEntry?.value
+          if value isnt undefined
+            memo.saveThis artifactKey, value
+            debug "need resolved from source key", describeArtifact(artifactKey), "(#{typeof value})"
+
+        if value is undefined and typeof target is 'string'
+          debug "need checking target key", target
+          targetEntry = memo.theLowdown target
+          value = targetEntry?.value
+          if value isnt undefined
+            memo.saveThis artifactKey, value
+            debug "need resolved from target key", describeArtifact(artifactKey), "(#{typeof value})"
+
       if value is undefined and needs.includes(artifactKey)
         debug "need waiting", describeArtifact(artifactKey)
         ui type:'need', phase:'waiting', artifact:artifactKey, artifact_detail:describeArtifact(artifactKey)

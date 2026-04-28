@@ -41,6 +41,11 @@
       gap: 16px;
       align-items: start;
     }
+    .column {
+      display: grid;
+      gap: 16px;
+      align-items: start;
+    }
     .panel {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -506,11 +511,7 @@
     </div>
 
 	    <div class="grid">
-	      <section class="panel">
-	        <h2>Run</h2>
-	        <div id="run-kv" class="kv"></div>
-	      </section>
-
+      <div class="column">
 	      <section class="panel">
 	        <h2>Pipe</h2>
 	        <div class="controls">
@@ -524,6 +525,11 @@
 	          <div id="merge-result" class="hint mono"></div>
 	          <div id="merge-status" class="hint mono"></div>
 	        </div>
+	      </section>
+
+	      <section class="panel">
+	        <h2>Run</h2>
+	        <div id="run-kv" class="kv"></div>
 	      </section>
 
 	      <section class="panel">
@@ -548,14 +554,36 @@
       </section>
 
       <section class="panel">
-        <h2>Pipeline Death</h2>
-        <div id="pipeline-death-box" class="death-box hidden">
-          <div id="pipeline-death-text" class="mono"></div>
+        <h2>Campaign Source Text</h2>
+        <div id="publicist-source-summary" class="hint mono"></div>
+        <div id="publicist-source-path" class="hint mono" style="margin-top:6px;"></div>
+        <div class="controls" style="margin-top:12px;">
+          <textarea id="publicist-source-editor" spellcheck="false"></textarea>
           <div class="button-row">
-            <button id="clear-pipeline-state-button" class="danger-button" type="button">Erase pipeline.json</button>
+            <button id="publicist-source-save-button" type="button">Save Source</button>
           </div>
+          <div id="publicist-source-status" class="hint mono"></div>
         </div>
-        <div id="pipeline-death-empty" class="hint mono">no pipeline.json death message</div>
+      </section>
+
+      <section class="panel">
+        <h2>Campaign Config</h2>
+        <div id="publicist-campaign-config-summary" class="hint mono"></div>
+        <div id="publicist-campaign-config-path" class="hint mono" style="margin-top:6px;"></div>
+        <div class="controls" style="margin-top:12px;">
+          <textarea id="publicist-campaign-config-editor" spellcheck="false"></textarea>
+          <div class="button-row">
+            <button id="publicist-campaign-config-save-button" type="button">Save Campaign Config</button>
+          </div>
+          <div id="publicist-campaign-config-status" class="hint mono"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Research Results</h2>
+        <div id="research-results-summary" class="hint mono"></div>
+        <div id="research-results-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="research-results-blocks" class="insight-blocks" style="margin-top:12px;"></div>
       </section>
 
       <section class="panel">
@@ -594,6 +622,36 @@
       </section>
 
       <section class="panel">
+        <h2>SQLite Insights</h2>
+        <div id="sqlite-insights-summary" class="hint mono"></div>
+        <div id="sqlite-insights-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="sqlite-insights-blocks" class="insight-blocks" style="margin-top:12px;"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Error Log</h2>
+        <pre id="latest-err"></pre>
+      </section>
+
+      <section class="panel">
+        <h2>Log Log</h2>
+        <pre id="latest-log"></pre>
+      </section>
+      </div>
+
+      <div class="column">
+      <section class="panel">
+        <h2>Pipeline Death</h2>
+        <div id="pipeline-death-box" class="death-box hidden">
+          <div id="pipeline-death-text" class="mono"></div>
+          <div class="button-row">
+            <button id="clear-pipeline-state-button" class="danger-button" type="button">Erase pipeline.json</button>
+          </div>
+        </div>
+        <div id="pipeline-death-empty" class="hint mono">no pipeline.json death message</div>
+      </section>
+
+      <section class="panel">
         <h2>Outputs</h2>
         <div id="out-files" class="files"></div>
         <h2 style="margin-top:16px;">Diary Files</h2>
@@ -601,29 +659,10 @@
       </section>
 
       <section class="panel">
-        <h2>Campaign Source Text</h2>
-        <div id="publicist-source-summary" class="hint mono"></div>
-        <div id="publicist-source-path" class="hint mono" style="margin-top:6px;"></div>
-        <div class="controls" style="margin-top:12px;">
-          <textarea id="publicist-source-editor" spellcheck="false"></textarea>
-          <div class="button-row">
-            <button id="publicist-source-save-button" type="button">Save Source</button>
-          </div>
-          <div id="publicist-source-status" class="hint mono"></div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>Campaign Config</h2>
-        <div id="publicist-campaign-config-summary" class="hint mono"></div>
-        <div id="publicist-campaign-config-path" class="hint mono" style="margin-top:6px;"></div>
-        <div class="controls" style="margin-top:12px;">
-          <textarea id="publicist-campaign-config-editor" spellcheck="false"></textarea>
-          <div class="button-row">
-            <button id="publicist-campaign-config-save-button" type="button">Save Campaign Config</button>
-          </div>
-          <div id="publicist-campaign-config-status" class="hint mono"></div>
-        </div>
+        <h2>Audience Suggestions</h2>
+        <div id="audience-suggestions-summary" class="hint mono"></div>
+        <div id="audience-suggestions-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="audience-suggestions-groups" class="research-groups" style="margin-top:12px;"></div>
       </section>
 
       <section class="panel">
@@ -635,24 +674,10 @@
       </section>
 
       <section class="panel">
-        <h2>SQLite Insights</h2>
-        <div id="sqlite-insights-summary" class="hint mono"></div>
-        <div id="sqlite-insights-source" class="hint mono" style="margin-top:6px;"></div>
-        <div id="sqlite-insights-blocks" class="insight-blocks" style="margin-top:12px;"></div>
-      </section>
-
-      <section class="panel">
         <h2>Research Requests</h2>
         <div id="research-requests-summary" class="hint mono"></div>
         <div id="research-requests-source" class="hint mono" style="margin-top:6px;"></div>
         <div id="research-requests-groups" class="research-groups" style="margin-top:12px;"></div>
-      </section>
-
-      <section class="panel">
-        <h2>Research Results</h2>
-        <div id="research-results-summary" class="hint mono"></div>
-        <div id="research-results-source" class="hint mono" style="margin-top:6px;"></div>
-        <div id="research-results-blocks" class="insight-blocks" style="margin-top:12px;"></div>
       </section>
 
       <section class="panel">
@@ -664,16 +689,7 @@
           <tbody id="steps-body"></tbody>
         </table>
       </section>
-
-      <section class="panel">
-        <h2>Latest Log</h2>
-        <pre id="latest-log"></pre>
-      </section>
-
-      <section class="panel">
-        <h2>Latest Err</h2>
-        <pre id="latest-err"></pre>
-      </section>
+      </div>
     </div>
   </div>
 
@@ -716,6 +732,8 @@
     let publicistSourceDirty = false;
     let publicistCampaignConfigInitialized = false;
     let publicistCampaignConfigDirty = false;
+    let audienceSuggestionsInitialized = false;
+    let audienceSuggestionSaveState = {};
 
     function uiEditorHasFocus() {
       const active = document.activeElement;
@@ -785,6 +803,91 @@
         publicistCampaignConfigDirty = false;
         if (!status.textContent || status.textContent === 'unsaved') status.textContent = '';
       }
+    }
+
+    function renderAudienceSuggestions(doc) {
+      const summary = byId('audience-suggestions-summary');
+      const source = byId('audience-suggestions-source');
+      const groups = byId('audience-suggestions-groups');
+      const suggestions = doc?.audience_suggestions || [];
+      const configured = doc?.configured_priority_audiences || [];
+
+      summary.textContent = [
+        `suggestions: ${doc?.summary?.suggestion_count ?? suggestions.length}`,
+        `configured_priority_audiences: ${doc?.summary?.configured_priority_count ?? configured.length}`
+      ].join('  ');
+      source.textContent = [
+        `workspace: ${doc?.workspace || ''}`,
+        `suggestions: ${doc?.path || ''}`,
+        `configured: ${configured.join(' | ')}`
+      ].filter(Boolean).join('  ');
+
+      if ((Object.values(audienceSuggestionSaveState).some((row) => row?.saving === true)) && audienceSuggestionsInitialized) {
+        return;
+      }
+
+      groups.innerHTML = suggestions.length ? suggestions.map((row) => {
+        const name = escapeHtml(row.name || '');
+        const description = escapeHtml(row.description || '');
+        const rationale = escapeHtml(row.rationale || '');
+        const targets = escapeHtml((row.example_targets || []).join(' | '));
+        const saveState = audienceSuggestionSaveState[row.name || ''] || {};
+        const isConfigured = configured.includes(row.name);
+        const disabled = saveState.saving === true || isConfigured ? 'disabled' : '';
+        const status = escapeHtml(saveState.status || (isConfigured ? 'already in campaign config' : ''));
+        return `
+          <div class="research-entry">
+            <div class="title">${name}</div>
+            <div class="review-meta">${description}</div>
+            <div class="review-notes">${rationale}</div>
+            <div class="review-meta">example_targets: ${targets}</div>
+            <div class="review-actions" style="margin-top:8px;">
+              <button type="button" class="audience-add-button" data-audience-name="${name}" ${disabled}>Add to Campaign Config</button>
+            </div>
+            <div class="review-save-status mono" data-audience-name="${name}">${status}</div>
+          </div>
+        `;
+      }).join('') : '<div class="hint">none</div>';
+
+      audienceSuggestionsInitialized = true;
+
+      groups.querySelectorAll('.audience-add-button').forEach((node) => {
+        node.addEventListener('click', async () => {
+          const audienceName = node.getAttribute('data-audience-name') || '';
+          const statusNode = groups.querySelector(`.review-save-status[data-audience-name="${audienceName}"]`);
+          audienceSuggestionSaveState[audienceName] = {
+            saving: true,
+            status: 'saving...'
+          };
+          if (statusNode) statusNode.textContent = 'saving...';
+          node.disabled = true;
+          try {
+            const res = await fetch('/api/publicist_campaign_add_audience', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: audienceName })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+              throw new Error(data.error || 'add audience failed');
+            }
+            audienceSuggestionSaveState[audienceName] = {
+              saving: false,
+              status: 'added to campaign config'
+            };
+            publicistCampaignConfigDirty = false;
+            publicistCampaignConfigInitialized = false;
+            await refresh();
+          } catch (err) {
+            audienceSuggestionSaveState[audienceName] = {
+              saving: false,
+              status: String(err?.message || err)
+            };
+            if (statusNode) statusNode.textContent = audienceSuggestionSaveState[audienceName].status;
+            node.disabled = false;
+          }
+        });
+      });
     }
 
     function captureReviewDraftOpenState() {
@@ -1431,6 +1534,8 @@
               const contactName = escapeHtml(entry.contact_name || '');
               const researchGoal = escapeHtml(entry.research_goal || '');
               const searchTerms = escapeHtml((entry.suggested_search_terms || []).join(' | '));
+              const suggestedDomains = Array.isArray(entry.suggested_allowed_domains) ? entry.suggested_allowed_domains : [];
+              const suggestedDomainsText = escapeHtml(suggestedDomains.map((row) => `${row.domain} (${row.confidence}: ${row.reason})`).join(' | '));
               const currentState = researchRequestEdits[entry.request_id || ''] || {};
               const domainsValue = escapeHtml(
                 (currentState.dirty === true || currentState.saving === true)
@@ -1452,10 +1557,12 @@
                   <div class="review-meta">status: ${statusText}</div>
                   <div class="review-notes">${researchGoal}</div>
                   <div class="review-meta">suggested_search_terms: ${searchTerms}</div>
+                  <div class="review-meta">suggested_allowed_domains: ${suggestedDomainsText || '(none)'}</div>
                   <div class="research-editor" data-request-id="${requestId}">
                     <input type="text" class="research-domains-input" data-request-id="${requestId}" value="${domainsValue}" placeholder="allowed domains, comma-separated">
                     <textarea class="research-notes-input" data-request-id="${requestId}" placeholder="reviewer notes">${reviewerNotes}</textarea>
                     <div class="review-actions">
+                      <button type="button" class="research-use-suggested-button" data-request-id="${requestId}" ${suggestedDomains.length ? '' : 'disabled'}>Use Suggested Domains</button>
                       <button type="button" class="research-save-button" data-request-id="${requestId}" data-status="approved_for_research" ${saveDisabled}>Approve Research</button>
                       <button type="button" class="research-save-button" data-request-id="${requestId}" data-status="rejected" ${saveDisabled}>Reject Research</button>
                       <button type="button" class="research-save-button" data-request-id="${requestId}" data-status="planned_only" ${saveDisabled}>Pending</button>
@@ -1491,6 +1598,29 @@
             status: 'unsaved'
           };
           const statusNode = groupsTarget.querySelector(`.review-save-status[data-request-id="${requestId}"]`);
+          if (statusNode) statusNode.textContent = 'unsaved';
+        });
+      });
+
+      groupsTarget.querySelectorAll('.research-use-suggested-button').forEach((node) => {
+        node.addEventListener('click', () => {
+          const requestId = node.getAttribute('data-request-id') || '';
+          if (!requestId) return;
+          const entry = Object.values(groups).flat().find((row) => (row?.request_id || '') === requestId) || {};
+          const suggested = Array.isArray(entry.suggested_allowed_domains) ? entry.suggested_allowed_domains : [];
+          const domainsNode = groupsTarget.querySelector(`.research-domains-input[data-request-id="${requestId}"]`);
+          const notesNode = groupsTarget.querySelector(`.research-notes-input[data-request-id="${requestId}"]`);
+          const statusNode = groupsTarget.querySelector(`.review-save-status[data-request-id="${requestId}"]`);
+          const domainText = suggested.map((row) => row.domain).join(', ');
+          if (domainsNode) domainsNode.value = domainText;
+          researchRequestEdits[requestId] = {
+            ...(researchRequestEdits[requestId] || {}),
+            allowed_domains: domainText,
+            reviewer_notes: notesNode ? notesNode.value : '',
+            dirty: true,
+            saving: false,
+            status: 'unsaved'
+          };
           if (statusNode) statusNode.textContent = 'unsaved';
         });
       });
@@ -1700,6 +1830,7 @@
       renderFiles(byId('diary-files'), data.diary_files);
       renderPublicistSource(data.publicist_source || {});
       renderPublicistCampaignConfig(data.publicist_campaign_config || {});
+      renderAudienceSuggestions(data.publicist_audience_suggestions || {});
       renderReviewDecisions(data.publicist_review || {}, data.publicist_enriched_drafts || {});
       renderSqliteInsights(data.publicist_sqlite_insights || {});
       renderResearchRequests(data.publicist_research_requests || {});

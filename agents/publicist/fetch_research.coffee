@@ -59,6 +59,15 @@ extractTitleAndText = (html) ->
 isApprovedResearchRequest = (request) ->
   String(request?.status ? '').trim().toLowerCase() is 'approved_for_research' and Array.isArray(request?.allowed_domains) and request.allowed_domains.length > 0
 
+sameApprovedHost = (a, b) ->
+  left = String(a ? '').trim().toLowerCase()
+  right = String(b ? '').trim().toLowerCase()
+  return false unless left.length and right.length
+  return true if left is right
+  return true if left is "www.#{right}"
+  return true if right is "www.#{left}"
+  false
+
 @step =
   desc: 'Fetch allowlisted read-only research content for approved publicist requests.'
 
@@ -118,6 +127,7 @@ isApprovedResearchRequest = (request) ->
           title: ''
           short_text_excerpt: ''
           fetched_at: null
+          redirect_target: null
           errors: []
 
         try
@@ -130,7 +140,7 @@ isApprovedResearchRequest = (request) ->
             validateStatus: -> true
             beforeRedirect: (options, responseDetails) ->
               nextHost = String(options?.hostname ? '').toLowerCase()
-              throw new Error "redirect_outside_allowed_hostname" unless nextHost is target.host
+              throw new Error "redirect_outside_allowed_hostname" unless sameApprovedHost(nextHost, target.host)
             headers:
               'User-Agent': 'publicist-research-fetch/1.0'
               'Accept': 'text/html, text/plain;q=0.9, */*;q=0.1'
@@ -140,7 +150,10 @@ isApprovedResearchRequest = (request) ->
           finalUrl = String(response.request?.res?.responseUrl ? target.url)
           try
             finalHost = new URL(finalUrl).hostname.toLowerCase()
-            row.errors.push 'redirect_outside_allowed_hostname' unless finalHost is target.host
+            unless sameApprovedHost(finalHost, target.host)
+              row.errors.push 'redirect_outside_allowed_hostname'
+            else if finalUrl isnt target.url
+              row.redirect_target = finalUrl
           catch
             row.errors.push 'invalid_final_url'
           contentType = String(response.headers?['content-type'] ? '')

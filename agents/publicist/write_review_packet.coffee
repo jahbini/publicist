@@ -9,6 +9,16 @@ decisionBucket = (decision) ->
   return 'rejected' if value in ['rejected', 'reject']
   'pending'
 
+resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
+  value = M.theLowdown(artifactKey)?.value
+  return { value, key: artifactKey } if validator(value)
+
+  targetKey = experiment?.artifacts?[artifactKey]?.target
+  targetValue = M.theLowdown(targetKey)?.value
+  return { value: targetValue, key: targetKey } if targetKey? and validator(targetValue)
+
+  { value, key: artifactKey, targetKey, targetValue }
+
 @step =
   desc: 'Write a human review packet for draft-only outreach.'
 
@@ -17,6 +27,7 @@ decisionBucket = (decision) ->
     throw new Error "[#{stepName}] Missing experiment.yaml in Memo" unless experiment?
 
     sourceMaterialKey = 'source_material'
+    audienceSuggestionsKey = 'audience_suggestions'
     audienceProfilesKey = 'audience_profiles'
     contactLedgerKey = 'contact_ledger'
     messageDraftsKey = 'message_drafts'
@@ -25,9 +36,11 @@ decisionBucket = (decision) ->
     nextActionsKey = 'next_actions'
     researchRequestsKey = 'research_requests'
     researchResultsKey = 'research_results'
+    targetCandidatesKey = 'target_candidates'
     enrichedDraftsKey = 'enriched_drafts'
     sqliteInsightsTarget = experiment.artifacts?.sqlite_insights?.target
     sourceMaterial = await L.need sourceMaterialKey
+    audienceSuggestions = await L.need audienceSuggestionsKey
     audienceProfiles = await L.need audienceProfilesKey
     contactLedger = await L.need contactLedgerKey
     messageDrafts = await L.need messageDraftsKey
@@ -36,9 +49,23 @@ decisionBucket = (decision) ->
     nextActions = await L.need nextActionsKey
     researchRequests = await L.need researchRequestsKey
     researchResults = await L.need researchResultsKey
+    targetCandidates = await L.need targetCandidatesKey
     enrichedDrafts = await L.need enrichedDraftsKey
     sqliteInsights = if sqliteInsightsTarget? then M.theLowdown(sqliteInsightsTarget)?.value else null
+    audienceSuggestions = resolveArtifactPayload(M, experiment, audienceSuggestionsKey, (value) -> Array.isArray(value?.audience_suggestions)).value ? audienceSuggestions
+    audienceProfiles = resolveArtifactPayload(M, experiment, audienceProfilesKey, (value) -> Array.isArray(value?.profiles)).value ? audienceProfiles
+    contactLedger = resolveArtifactPayload(M, experiment, contactLedgerKey, (value) -> Array.isArray(value?.entries)).value ? contactLedger
+    messageDrafts = resolveArtifactPayload(M, experiment, messageDraftsKey, (value) -> Array.isArray(value?.drafts)).value ? messageDrafts
+    reviewDecisions = resolveArtifactPayload(M, experiment, reviewDecisionsKey, (value) -> Array.isArray(value?.decisions)).value ? reviewDecisions
+    sqliteLoadReport = resolveArtifactPayload(M, experiment, sqliteLoadReportKey, (value) -> value?.summary?).value ? sqliteLoadReport
+    nextActions = resolveArtifactPayload(M, experiment, nextActionsKey, (value) -> value?.summary?).value ? nextActions
+    researchRequests = resolveArtifactPayload(M, experiment, researchRequestsKey, (value) -> Array.isArray(value?.research_requests)).value ? researchRequests
+    researchResults = resolveArtifactPayload(M, experiment, researchResultsKey, (value) -> Array.isArray(value?.results)).value ? researchResults
+    targetCandidates = resolveArtifactPayload(M, experiment, targetCandidatesKey, (value) -> value?.target_candidates?).value ? targetCandidates
+    enrichedDrafts = resolveArtifactPayload(M, experiment, enrichedDraftsKey, (value) -> Array.isArray(value?.enriched_drafts)).value ? enrichedDrafts
+
     throw new Error "[#{stepName}] Missing required artifact '#{sourceMaterialKey}'" unless sourceMaterial?
+    throw new Error "[#{stepName}] Missing required artifact '#{audienceSuggestionsKey}'" unless Array.isArray(audienceSuggestions?.audience_suggestions)
     throw new Error "[#{stepName}] Missing required artifact '#{audienceProfilesKey}'" unless audienceProfiles?.profiles?
     throw new Error "[#{stepName}] Missing required artifact '#{contactLedgerKey}'" unless contactLedger?.entries?
     throw new Error "[#{stepName}] Missing required artifact '#{messageDraftsKey}'" unless messageDrafts?.drafts?
@@ -47,6 +74,7 @@ decisionBucket = (decision) ->
     throw new Error "[#{stepName}] Missing required artifact '#{nextActionsKey}'" unless nextActions?.summary?
     throw new Error "[#{stepName}] Missing required artifact '#{researchRequestsKey}'" unless Array.isArray(researchRequests?.research_requests)
     throw new Error "[#{stepName}] Missing required artifact '#{researchResultsKey}'" unless Array.isArray(researchResults?.results)
+    throw new Error "[#{stepName}] Missing required artifact '#{targetCandidatesKey}'" unless targetCandidates?.target_candidates?
     throw new Error "[#{stepName}] Missing required artifact '#{enrichedDraftsKey}'" unless Array.isArray(enrichedDrafts?.enriched_drafts)
 
     reviewers = M.getStepParam(stepName, 'reviewers') ? []
@@ -54,6 +82,20 @@ decisionBucket = (decision) ->
 
     audienceLines = audienceProfiles.profiles.map (profile) ->
       "- #{profile.audience_label}: #{profile.angle}"
+
+    audienceSuggestionLines = [
+      "- suggestion_count: #{audienceSuggestions.summary?.suggestion_count ? audienceSuggestions.audience_suggestions.length ? 0}"
+      "- configured_priority_count: #{audienceSuggestions.summary?.configured_priority_count ? 0}"
+      "- suggestion_only: #{audienceSuggestions.summary?.suggestion_only is true}"
+      ""
+      (if audienceSuggestions.audience_suggestions.length then audienceSuggestions.audience_suggestions.map((row) ->
+        [
+          "- #{row.name}: #{row.description ? ''}"
+          "  rationale=#{row.rationale ? ''}"
+          "  example_targets=#{(row.example_targets ? []).join(' | ')}"
+        ].join("\n")
+      ).join("\n") else "- none")
+    ]
 
     ledgerLines = contactLedger.entries.map (entry) ->
       "- #{entry.audience}: #{entry.organization} / #{entry.contact_name} / #{entry.contact_role} / #{entry.contact_channel} / #{entry.status}"
@@ -179,6 +221,21 @@ decisionBucket = (decision) ->
       (if researchResults.skipped?.length then researchResults.skipped.map((row) -> "- #{row.request_id}: #{row.reason ? 'unknown'}").join("\n") else "- none")
     ]
 
+    targetCandidateLines = [
+      "- audience_group_count: #{targetCandidates.summary?.audience_group_count ? Object.keys(targetCandidates.target_candidates ? {}).length}"
+      "- raw_candidate_count: #{targetCandidates.summary?.raw_candidate_count ? targetCandidates.raw_candidates?.length ? 0}"
+      "- suggestion_only: #{targetCandidates.summary?.suggestion_only is true}"
+      ""
+      (if Object.keys(targetCandidates.target_candidates ? {}).length then Object.keys(targetCandidates.target_candidates).map((audienceKey) ->
+        rows = targetCandidates.target_candidates[audienceKey] ? []
+        [
+          "### #{audienceKey}"
+          ""
+          (if rows.length then rows.map((row) -> "- #{row.organization_name ? 'unknown'} / #{row.website ? 'n/a'} / #{row.confidence_score ? 'low'} / #{row.relevance_reason ? ''}").join("\n") else "- none")
+        ].join("\n")
+      ).join("\n\n") else "- none")
+    ]
+
     enrichmentLines = [
       "- drafts_with_research: #{enrichedDrafts.summary?.drafts_with_research ? 0}"
       "- drafts_without_research: #{enrichedDrafts.summary?.drafts_without_research ? 0}"
@@ -256,6 +313,10 @@ decisionBucket = (decision) ->
       ""
       audienceLines.join("\n")
       ""
+      "## Suggested Audiences"
+      ""
+      audienceSuggestionLines.join("\n")
+      ""
       "## Contact Ledger"
       ""
       ledgerLines.join("\n")
@@ -301,6 +362,10 @@ decisionBucket = (decision) ->
       "## Research Results"
       ""
       researchResultLines.join("\n")
+      ""
+      "## Target Candidates"
+      ""
+      targetCandidateLines.join("\n")
       ""
       "## Research-Enhanced Suggestions"
       ""

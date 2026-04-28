@@ -46,6 +46,16 @@ uniqueStrings = (values) ->
     rows.push text
   rows
 
+resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
+  value = M.theLowdown(artifactKey)?.value
+  return { value, key: artifactKey } if validator(value)
+
+  targetKey = experiment?.artifacts?[artifactKey]?.target
+  targetValue = M.theLowdown(targetKey)?.value
+  return { value: targetValue, key: targetKey } if targetKey? and validator(targetValue)
+
+  { value, key: artifactKey, targetKey, targetValue }
+
 @step =
   desc: 'Generate research-based draft improvement suggestions without overwriting human text.'
 
@@ -61,9 +71,28 @@ uniqueStrings = (values) ->
     messageDrafts = await L.need messageDraftsKey
     reviewDecisions = await L.need reviewDecisionsKey
 
-    throw new Error "[#{stepName}] Missing required artifact '#{researchResultsKey}'" unless Array.isArray(researchResults?.results)
-    throw new Error "[#{stepName}] Missing required artifact '#{messageDraftsKey}'" unless Array.isArray(messageDrafts?.drafts)
-    throw new Error "[#{stepName}] Missing required artifact '#{reviewDecisionsKey}'" unless Array.isArray(reviewDecisions?.decisions)
+    researchArtifact = resolveArtifactPayload M, experiment, researchResultsKey, (value) -> Array.isArray(value?.results)
+    messageArtifact = resolveArtifactPayload M, experiment, messageDraftsKey, (value) -> Array.isArray(value?.drafts)
+    decisionsArtifact = resolveArtifactPayload M, experiment, reviewDecisionsKey, (value) -> Array.isArray(value?.decisions)
+
+    researchResults = researchArtifact.value if Array.isArray(researchArtifact.value?.results)
+    messageDrafts = messageArtifact.value if Array.isArray(messageArtifact.value?.drafts)
+    reviewDecisions = decisionsArtifact.value if Array.isArray(decisionsArtifact.value?.decisions)
+
+    unless Array.isArray(researchResults?.results)
+      attempted = [researchResultsKey]
+      attempted.push researchArtifact.targetKey if researchArtifact.targetKey?
+      throw new Error "[#{stepName}] Missing required artifact '#{researchResultsKey}' (attempted: #{attempted.join(', ')})"
+
+    unless Array.isArray(messageDrafts?.drafts)
+      attempted = [messageDraftsKey]
+      attempted.push messageArtifact.targetKey if messageArtifact.targetKey?
+      throw new Error "[#{stepName}] Missing required artifact '#{messageDraftsKey}' (attempted: #{attempted.join(', ')})"
+
+    unless Array.isArray(reviewDecisions?.decisions)
+      attempted = [reviewDecisionsKey]
+      attempted.push decisionsArtifact.targetKey if decisionsArtifact.targetKey?
+      throw new Error "[#{stepName}] Missing required artifact '#{reviewDecisionsKey}' (attempted: #{attempted.join(', ')})"
 
     decisionsByDraftId = {}
     for decision in reviewDecisions.decisions when decision?.draft_id?
