@@ -583,6 +583,9 @@
         <h2>Research Results</h2>
         <div id="research-results-summary" class="hint mono"></div>
         <div id="research-results-source" class="hint mono" style="margin-top:6px;"></div>
+        <div class="hint" style="margin-top:8px;">
+          To change what gets fetched, copy the <strong>request_id</strong> shown on a result below, then find that same <strong>request_id</strong> in the <strong>Research Requests</strong> panel and edit its allowed domains there.
+        </div>
         <div id="research-results-blocks" class="insight-blocks" style="margin-top:12px;"></div>
       </section>
 
@@ -662,7 +665,7 @@
         <div id="outreach-log-groups" class="research-groups" style="margin-top:12px;"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel" id="research-requests-panel">
         <h2>Research Requests</h2>
         <div id="research-requests-summary" class="hint mono"></div>
         <div id="research-requests-source" class="hint mono" style="margin-top:6px;"></div>
@@ -1771,7 +1774,7 @@
               const saveStatus = escapeHtml(currentState.status || '');
               const saveDisabled = currentState.saving === true ? 'disabled' : '';
               return `
-                <div class="research-entry">
+                <div class="research-entry" id="research-request-${requestId}">
                   <div class="title">${requestId}</div>
                   <div class="review-meta">${audience} / ${organization} / ${contactName}</div>
                   <div class="review-meta">status: ${statusText}</div>
@@ -1926,6 +1929,7 @@
       source.textContent = [
         `workspace: ${resultsDoc?.workspace || ''}`,
         `results: ${resultsDoc?.path || ''}`,
+        `requests: ${resultsDoc?.research_requests_path || ''}`,
         `enriched: ${resultsDoc?.enriched_drafts_path || ''}`,
         `packet: ${resultsDoc?.review_packet_path || ''}`
       ].filter(Boolean).join('  ');
@@ -1939,7 +1943,10 @@
           <h3>Fetched Results</h3>
           ${renderRows(results, (row) => `
             <div><strong>${escapeHtml(row.request_id || '')}</strong></div>
+            <div class="mono"><a href="#research-request-${escapeHtml(row.request_id || '')}">Jump to request</a></div>
             <div class="mono">${escapeHtml(row.url || '')}</div>
+            <div class="mono">request_status: ${escapeHtml(row.request_status || 'n/a')}  request_reviewed_at: ${escapeHtml(formatLocalTime(row.request_reviewed_at || ''))}</div>
+            <div class="mono">current_allowed_domains: ${escapeHtml((row.request_allowed_domains || []).join(' | ') || 'none')}</div>
             <div class="mono">status_code: ${escapeHtml(String(row.status_code ?? 'n/a'))}  fetched_at: ${escapeHtml(formatLocalTime(row.fetched_at || ''))}</div>
             <div>${escapeHtml(row.title || '')}</div>
             <div class="review-notes">${escapeHtml(row.short_text_excerpt || '')}</div>
@@ -1950,6 +1957,9 @@
           <h3>Skipped Requests</h3>
           ${renderRows(skipped, (row) => `
             <div><strong>${escapeHtml(row.request_id || '')}</strong></div>
+            <div class="mono"><a href="#research-request-${escapeHtml(row.request_id || '')}">Jump to request</a></div>
+            <div class="mono">request_status: ${escapeHtml(row.request_status || 'n/a')}  request_reviewed_at: ${escapeHtml(formatLocalTime(row.request_reviewed_at || ''))}</div>
+            <div class="mono">current_allowed_domains: ${escapeHtml((row.request_allowed_domains || []).join(' | ') || 'none')}</div>
             <div class="mono">reason: ${escapeHtml(row.reason || '')}</div>
             <div class="mono">detail: ${escapeHtml(Array.isArray(row.detail) ? row.detail.join(' | ') : (row.detail || ''))}</div>
           `)}

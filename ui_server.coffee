@@ -794,17 +794,40 @@ readPublicistResearchResultsUi = (workspacePath = CWD) ->
   base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
   resultsPath = path.join(base, 'out', 'research_results.yaml')
   resultsDoc = if fs.existsSync(resultsPath) then readYaml(resultsPath) else {}
+  requestsPath = path.join(base, 'out', 'research_requests.yaml')
+  requestsDoc = if fs.existsSync(requestsPath) then readYaml(requestsPath) else {}
   artifactPaths = publicistArtifactPaths(base)
+  requests = if Array.isArray(requestsDoc?.research_requests) then requestsDoc.research_requests else []
+  requestsById = {}
+  for row in requests when row?.request_id?
+    requestsById[row.request_id] = row
+
+  enrichedResults = []
+  for row in (resultsDoc?.results ? [])
+    request = requestsById[row?.request_id] ? {}
+    enrichedResults.push Object.assign {}, row,
+      request_status: request.status ? null
+      request_allowed_domains: if Array.isArray(request.allowed_domains) then request.allowed_domains else []
+      request_reviewed_at: request.reviewed_at ? null
+
+  enrichedSkipped = []
+  for row in (resultsDoc?.skipped ? [])
+    request = requestsById[row?.request_id] ? {}
+    enrichedSkipped.push Object.assign {}, row,
+      request_status: request.status ? null
+      request_allowed_domains: if Array.isArray(request.allowed_domains) then request.allowed_domains else []
+      request_reviewed_at: request.reviewed_at ? null
 
   {
     path: if fs.existsSync(resultsPath) then path.relative(base, resultsPath) else 'out/research_results.yaml'
     workspace: base
+    research_requests_path: artifactPaths.research_requests
     target_candidates_path: artifactPaths.target_candidates
     enriched_drafts_path: artifactPaths.enriched_drafts
     review_packet_path: artifactPaths.review_packet
     summary: resultsDoc?.summary ? {}
-    results: if Array.isArray(resultsDoc?.results) then resultsDoc.results else []
-    skipped: if Array.isArray(resultsDoc?.skipped) then resultsDoc.skipped else []
+    results: enrichedResults
+    skipped: enrichedSkipped
   }
 
 readPublicistTargetCandidatesUi = (workspacePath = CWD) ->

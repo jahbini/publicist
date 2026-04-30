@@ -22,30 +22,23 @@ normalizeAllowedTarget = (raw, allowQueryString = false) ->
   text = String(raw ? '').trim()
   return null unless text.length
   return { error: 'wildcards_not_allowed' } if /[*?]/.test(text)
-  if /^https?:\/\//i.test(text)
+  candidate = if /^https?:\/\//i.test(text) then text else "https://#{text}"
+  if /^https?:\/\//i.test(candidate)
     try
-      parsed = new URL(text)
+      parsed = new URL(candidate)
       return null unless /^https?:$/i.test(parsed.protocol)
       host = parsed.hostname.toLowerCase()
       return { error: 'search_engine_domain_not_allowed' } if SEARCH_ENGINE_HOSTS.has(host)
       return { error: 'query_string_not_allowed' } if parsed.search?.length and allowQueryString isnt true
+      isBareDomain = not /^https?:\/\//i.test(text) and text is host
+      normalizedUrl = if isBareDomain then "https://#{host}/" else parsed.toString()
       return
         source: text
         host: host
-        url: parsed.toString()
-        isFullUrl: true
+        url: normalizedUrl
+        isFullUrl: isBareDomain isnt true
     catch
       return { error: 'invalid_url' }
-
-  host = text.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim().toLowerCase()
-  return null unless host.length
-  return { error: 'search_engine_domain_not_allowed' } if SEARCH_ENGINE_HOSTS.has(host)
-  {
-    source: text
-    host: host
-    url: "https://#{host}/"
-    isFullUrl: false
-  }
 
 extractTitleAndText = (html) ->
   $ = cheerio.load String(html ? '')

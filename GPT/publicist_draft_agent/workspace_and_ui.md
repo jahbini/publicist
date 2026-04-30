@@ -32,3 +32,11 @@ Known pitfalls:
 - stale prototype output in UI usually means workspace resolution drifted
 - reopening UI alone does not create artifacts; the pipeline step must run
 - if a panel is empty while Outputs shows files, inspect the panel’s workspace path first
+
+Human-facing UI guidance:
+- do not try to correct the human in a scolding way
+- when a fetched or generated item is wrong, show the human exactly where to update it
+- prefer direct UI backlinks, anchors, or panel links over abstract instructions
+- if a generated result came from an approved request, expose the governing `request_id` and a jump path to that request
+- do not silently rewrite, normalize away, or reinterpret human-entered values unless the UI clearly shows that transformation and the human explicitly chose it
+- pipeline behavior should preserve human intent; if a value is unsafe or unsupported, surface that clearly instead of quietly changing it
