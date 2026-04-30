@@ -14,10 +14,14 @@ artifacts:
     target: out/audience_profiles.yaml
   contact_ledger:
     target: out/contact_ledger.yaml
+  contact_ledger_enriched:
+    target: out/contact_ledger.yaml
   message_drafts:
     target: out/message_drafts.yaml
   review_decisions:
     target: out/review_decisions.yaml
+  outreach_log:
+    target: out/outreach_log.yaml
   sqlite_load_report:
     target: out/sqlite_load_report.yaml
   sqlite_init_report:
@@ -34,6 +38,12 @@ artifacts:
     target: out/research_results.yaml
   target_candidates:
     target: out/target_candidates.yaml
+  qualified_targets:
+    target: out/qualified_targets.yaml
+  contact_discovery_requests:
+    target: out/contact_discovery_requests.yaml
+  contact_page_results:
+    target: out/contact_page_results.yaml
   enriched_drafts:
     target: out/enriched_drafts.yaml
   review_packet:
@@ -80,9 +90,15 @@ init_review_decisions:
   needs: [message_drafts]
   makes: [review_decisions]
 
+init_outreach_log:
+  run: ../agents/publicist/init_outreach_log.coffee
+  depends_on: [init_review_decisions]
+  needs: [message_drafts, review_decisions]
+  makes: [outreach_log]
+
 validate_sqlite_load:
   run: ../agents/publicist/validate_sqlite_load.coffee
-  depends_on: [init_review_decisions]
+  depends_on: [init_outreach_log]
   needs: [audience_profiles, contact_ledger, message_drafts, review_decisions]
   makes: [sqlite_load_report]
 
@@ -138,10 +154,34 @@ enrich_drafts_with_research:
   needs: [research_results, message_drafts, review_decisions]
   makes: [enriched_drafts]
 
+qualify_targets:
+  run: ../agents/publicist/qualify_targets.coffee
+  depends_on: [extract_targets]
+  needs: [target_candidates]
+  makes: [qualified_targets]
+
+plan_contact_discovery:
+  run: ../agents/publicist/plan_contact_discovery.coffee
+  depends_on: [qualify_targets]
+  needs: [qualified_targets]
+  makes: [contact_discovery_requests]
+
+fetch_contact_pages:
+  run: ../agents/publicist/fetch_contact_pages.coffee
+  depends_on: [plan_contact_discovery]
+  needs: [contact_discovery_requests]
+  makes: [contact_page_results]
+
+merge_contact_page_results_into_contact_ledger:
+  run: ../agents/publicist/merge_contact_page_results_into_contact_ledger.coffee
+  depends_on: [fetch_contact_pages]
+  needs: [contact_ledger, contact_page_results]
+  makes: [contact_ledger_enriched]
+
 write_review_packet:
   run: ../agents/publicist/write_review_packet.coffee
-  depends_on: [extract_targets, enrich_drafts_with_research]
-  needs: [source_material, audience_suggestions, audience_profiles, contact_ledger, message_drafts, review_decisions, sqlite_load_report, next_actions, research_requests, research_results, target_candidates, enriched_drafts]
+  depends_on: [merge_contact_page_results_into_contact_ledger, enrich_drafts_with_research]
+  needs: [source_material, audience_suggestions, audience_profiles, contact_ledger_enriched, message_drafts, review_decisions, outreach_log, sqlite_load_report, next_actions, research_requests, research_results, target_candidates, qualified_targets, contact_page_results, enriched_drafts]
   makes: [review_packet]
   reviewers:
     - editorial_review

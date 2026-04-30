@@ -4,6 +4,7 @@
 *.tar
 *.tgz
 *.old
+*.js
 pipes/
 
 

@@ -5,6 +5,66 @@ compactText = (value) ->
     .replace(/\s+/g, ' ')
     .trim()
 
+normalizeText = (value) ->
+  String(value ? '').trim()
+
+normalizeKey = (value) ->
+  normalizeText(value).toLowerCase()
+
+resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
+  value = M.theLowdown(artifactKey)?.value
+  return { value, key: artifactKey } if validator(value)
+
+  targetKey = experiment?.artifacts?[artifactKey]?.target
+  targetValue = M.theLowdown(targetKey)?.value
+  return { value: targetValue, key: targetKey } if targetKey? and validator(targetValue)
+
+  { value, key: artifactKey, targetKey, targetValue }
+
+joinUnique = (rows) ->
+  seen = new Set()
+  out = []
+  for row in rows
+    text = compactText row
+    continue unless text.length
+    key = text.toLowerCase()
+    continue if seen.has key
+    seen.add key
+    out.push text
+  out
+
+contactPageFormsText = (rows) ->
+  joinUnique((rows ? []).map((row) -> "#{normalizeText(row?.method ? 'GET')} #{normalizeText(row?.url)}"))
+
+buildTargetCallToAction = (entry) ->
+  parts = [
+    'Please review the project and consider whether this fits your audience.'
+    'If it does, we would value a conversation, a technical referral, or guidance on the right editorial or program contact.'
+  ]
+  if String(entry?.status ? '') is 'target_qualified'
+    parts.splice 1, 0, 'We are especially interested in whether there is technical interest or partner relevance here.'
+  parts.join ' '
+
+buildContextNotes = (profile, relatedResearchRows, enrichment) ->
+  notes = []
+  for row in relatedResearchRows.slice(0, 2)
+    title = compactText row?.title ? row?.page_title
+    excerpt = compactText row?.short_text_excerpt ? row?.clean_text_excerpt
+    notes.push title if title.length
+    notes.push excerpt if excerpt.length and excerpt isnt 'No useful content extracted'
+  for item in (enrichment?.additional_talking_points ? []).slice(0, 2)
+    notes.push item
+  joinUnique notes
+
+buildWhyThisTargetMayCare = (entry, profile, enrichment) ->
+  joinUnique [
+    entry?.rationale
+    profile?.rationale
+    profile?.angle
+    (enrichment?.suggested_improvements ? []).join(' ')
+    (enrichment?.additional_talking_points ? []).join(' ')
+  ]
+
 preserveHumanRevision = (draft, existingDraft, currentSourceHash) ->
   return draft unless existingDraft?.revised_by_human is true
   return draft unless String(existingDraft?.campaign_source_hash ? '') is String(currentSourceHash ? '')
@@ -37,29 +97,66 @@ preserveHumanRevision = (draft, existingDraft, currentSourceHash) ->
     messageDraftsTarget = experiment.artifacts?.message_drafts?.target
     existingDoc = if messageDraftsTarget? then M.theLowdown(messageDraftsTarget)?.value else null
     existingDrafts = if Array.isArray(existingDoc?.drafts) then existingDoc.drafts else []
+    qualifiedTargetsDoc = resolveArtifactPayload(M, experiment, 'qualified_targets', (value) -> Array.isArray(value?.qualified_targets)).value ? {}
+    qualifiedTargets = if Array.isArray(qualifiedTargetsDoc?.qualified_targets) then qualifiedTargetsDoc.qualified_targets else []
+    qualifiedByCandidateId = {}
+    qualifiedByOrgAudience = {}
+    for row in qualifiedTargets when row?
+      qualifiedByCandidateId[normalizeKey(row.candidate_id)] = row if normalizeText(row.candidate_id).length
+      qualifiedByOrgAudience["#{normalizeKey(row.audience)}::#{normalizeKey(row.organization_name)}"] = row if normalizeText(row.audience).length and normalizeText(row.organization_name).length
+
+    enrichedDraftsDoc = resolveArtifactPayload(M, experiment, 'enriched_drafts', (value) -> Array.isArray(value?.enriched_drafts)).value ? {}
+    enrichedByDraftId = {}
+    for row in (enrichedDraftsDoc?.enriched_drafts ? []) when row?.draft_id?
+      enrichedByDraftId[row.draft_id] = row
+
+    researchResultsDoc = resolveArtifactPayload(M, experiment, 'research_results', (value) -> Array.isArray(value?.results)).value ? {}
+    researchRows = if Array.isArray(researchResultsDoc?.results) then researchResultsDoc.results else []
+
+    contactPageResultsDoc = resolveArtifactPayload(M, experiment, 'contact_page_results', (value) -> Array.isArray(value?.results)).value ? {}
+    contactPageByCandidateId = {}
+    for row in (contactPageResultsDoc?.results ? []) when normalizeText(row?.candidate_id).length
+      key = normalizeKey row.candidate_id
+      contactPageByCandidateId[key] ?= []
+      contactPageByCandidateId[key].push row
+
     existingByDraftId = {}
     for draft in existingDrafts when draft?.draft_id?
       existingByDraftId[draft.draft_id] = draft
 
     baseHighlights = (sourceMaterial.highlights ? []).slice(0, 2).join(' ')
     drafts = audienceProfiles.profiles.map (profile) ->
-      ledgerEntry = contactLedger.entries.find (entry) -> entry.audience is profile.audience_label
+      matchingEntries = contactLedger.entries.filter (entry) -> entry.audience is profile.audience_label
+      ledgerEntry = matchingEntries.find((entry) -> String(entry?.status ? '') is 'target_qualified') ? matchingEntries[0]
+      targetKey = if normalizeText(ledgerEntry?.source_candidate_id).length then normalizeKey(ledgerEntry.source_candidate_id) else null
+      qualifiedTarget = if targetKey? and qualifiedByCandidateId[targetKey]? then qualifiedByCandidateId[targetKey] else qualifiedByOrgAudience["#{normalizeKey(ledgerEntry?.audience)}::#{normalizeKey(ledgerEntry?.organization)}"]
       hook = compactText(profile.angle)
       draftId = "draft_#{profile.audience_key}"
       subject = "#{sourceMaterial.brand_name}: #{profile.audience_label} draft"
+      relatedResearchRows = researchRows.filter (row) ->
+        normalizeKey(row?.audience) is normalizeKey(profile.audience_key) or
+        normalizeKey(row?.audience) is normalizeKey(profile.audience_label) or
+        (normalizeText(ledgerEntry?.organization).length and normalizeKey(row?.organization) is normalizeKey(ledgerEntry.organization))
+      existingEnrichment = enrichedByDraftId[draftId]
+      contextNotes = buildContextNotes profile, relatedResearchRows, existingEnrichment
+      whyThisTargetMayCare = buildWhyThisTargetMayCare ledgerEntry, profile, existingEnrichment
+      targetCallToAction = buildTargetCallToAction ledgerEntry
       emailBody = [
         "Hi #{ledgerEntry?.contact_name ? profile.audience_label},"
         ""
-        "I’m sharing a draft outreach note for review regarding #{sourceMaterial.campaign_name} in #{sourceMaterial.launch_city ? 'the local market'}."
+        "I’m sharing a draft outreach note for review regarding #{sourceMaterial.campaign_name}."
         "#{hook}"
         ""
         "#{baseHighlights}"
         ""
-        "#{callToAction}"
+        (if contextNotes.length then "Context notes: #{contextNotes.join(' ')}" else null)
+        (if whyThisTargetMayCare.length then "Why this target may care: #{whyThisTargetMayCare.join(' ')}" else null)
+        ""
+        (if String(ledgerEntry?.status ? '') is 'target_qualified' then targetCallToAction else callToAction)
         ""
         "Best,"
         signatureName
-      ].join("\n")
+      ].filter((line) -> line? and String(line).length).join("\n")
 
       followUp = "Follow up with #{String(profile.audience_label ? '').toLowerCase()} only after human review and explicit approval."
 
@@ -72,6 +169,14 @@ preserveHumanRevision = (draft, existingDraft, currentSourceHash) ->
         contact_name: ledgerEntry?.contact_name ? null
         contact_role: ledgerEntry?.contact_role ? null
         contact_channel: ledgerEntry?.contact_channel ? null
+        target_website: qualifiedTarget?.website ? ledgerEntry?.contact_channel ? null
+        target_type: qualifiedTarget?.target_type ? ledgerEntry?.contact_role ? null
+        target_rationale: qualifiedTarget?.relevance_reason ? ledgerEntry?.rationale ? null
+        contact_page_url: ledgerEntry?.contact_page_url ? contactPageByCandidateId[targetKey]?[0]?.url ? null
+        discovered_contact_forms: ledgerEntry?.discovered_contact_forms ? []
+        discovered_social_links: ledgerEntry?.discovered_social_links ? []
+        context_notes: contextNotes
+        why_this_target_may_care: whyThisTargetMayCare
         subject: subject
         pitch_summary: hook
         email_body: emailBody

@@ -641,6 +641,49 @@
 
       <div class="column">
       <section class="panel">
+        <h2>Target Candidates</h2>
+        <div id="target-candidates-summary" class="hint mono"></div>
+        <div id="target-candidates-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="target-candidates-groups" class="research-groups" style="margin-top:12px;"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Review Decisions</h2>
+        <div id="review-decisions-summary" class="hint mono"></div>
+        <div id="review-decisions-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="review-packet-link" class="files" style="margin-top:10px;"></div>
+        <div id="review-decisions-groups" class="review-groups" style="margin-top:12px;"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Outreach Log</h2>
+        <div id="outreach-log-summary" class="hint mono"></div>
+        <div id="outreach-log-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="outreach-log-groups" class="research-groups" style="margin-top:12px;"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Research Requests</h2>
+        <div id="research-requests-summary" class="hint mono"></div>
+        <div id="research-requests-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="research-requests-groups" class="research-groups" style="margin-top:12px;"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Contact Discovery</h2>
+        <div id="contact-discovery-summary" class="hint mono"></div>
+        <div id="contact-discovery-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="contact-discovery-groups" class="research-groups" style="margin-top:12px;"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Contact Page Results</h2>
+        <div id="contact-page-results-summary" class="hint mono"></div>
+        <div id="contact-page-results-source" class="hint mono" style="margin-top:6px;"></div>
+        <div id="contact-page-results-blocks" class="insight-blocks" style="margin-top:12px;"></div>
+      </section>
+
+      <section class="panel">
         <h2>Pipeline Death</h2>
         <div id="pipeline-death-box" class="death-box hidden">
           <div id="pipeline-death-text" class="mono"></div>
@@ -663,21 +706,6 @@
         <div id="audience-suggestions-summary" class="hint mono"></div>
         <div id="audience-suggestions-source" class="hint mono" style="margin-top:6px;"></div>
         <div id="audience-suggestions-groups" class="research-groups" style="margin-top:12px;"></div>
-      </section>
-
-      <section class="panel">
-        <h2>Review Decisions</h2>
-        <div id="review-decisions-summary" class="hint mono"></div>
-        <div id="review-decisions-source" class="hint mono" style="margin-top:6px;"></div>
-        <div id="review-packet-link" class="files" style="margin-top:10px;"></div>
-        <div id="review-decisions-groups" class="review-groups" style="margin-top:12px;"></div>
-      </section>
-
-      <section class="panel">
-        <h2>Research Requests</h2>
-        <div id="research-requests-summary" class="hint mono"></div>
-        <div id="research-requests-source" class="hint mono" style="margin-top:6px;"></div>
-        <div id="research-requests-groups" class="research-groups" style="margin-top:12px;"></div>
       </section>
 
       <section class="panel">
@@ -726,8 +754,14 @@
     let reviewDecisionEdits = {};
     let reviewDraftOpenState = {};
     let reviewDraftEdits = {};
+    let outreachLogInitialized = false;
+    let outreachLogEdits = {};
     let researchRequestsInitialized = false;
     let researchRequestEdits = {};
+    let targetCandidatesInitialized = false;
+    let targetCandidateEdits = {};
+    let contactDiscoveryInitialized = false;
+    let contactDiscoveryEdits = {};
     let publicistSourceInitialized = false;
     let publicistSourceDirty = false;
     let publicistCampaignConfigInitialized = false;
@@ -748,7 +782,7 @@
 
     function reviewEditorHasFocus() {
       const active = document.activeElement;
-      return !!(active?.classList?.contains('review-notes-input') || active?.classList?.contains('draft-subject-input') || active?.classList?.contains('draft-body-input') || active?.classList?.contains('research-domains-input') || active?.classList?.contains('research-notes-input') || active?.id === 'publicist-source-editor' || active?.id === 'publicist-campaign-config-editor');
+      return !!(active?.classList?.contains('review-notes-input') || active?.classList?.contains('draft-subject-input') || active?.classList?.contains('draft-body-input') || active?.classList?.contains('outreach-log-select') || active?.classList?.contains('outreach-log-input') || active?.classList?.contains('outreach-log-notes-input') || active?.classList?.contains('research-domains-input') || active?.classList?.contains('research-notes-input') || active?.classList?.contains('target-candidate-notes-input') || active?.classList?.contains('contact-discovery-notes-input') || active?.id === 'publicist-source-editor' || active?.id === 'publicist-campaign-config-editor');
     }
 
     function hasDirtyReviewEdits() {
@@ -759,8 +793,20 @@
       return Object.values(reviewDraftEdits).some((entry) => entry?.dirty === true || entry?.saving === true);
     }
 
+    function hasDirtyOutreachLogEdits() {
+      return Object.values(outreachLogEdits).some((entry) => entry?.dirty === true || entry?.saving === true);
+    }
+
     function hasDirtyResearchEdits() {
       return Object.values(researchRequestEdits).some((entry) => entry?.dirty === true || entry?.saving === true);
+    }
+
+    function hasDirtyTargetCandidateEdits() {
+      return Object.values(targetCandidateEdits).some((entry) => entry?.dirty === true || entry?.saving === true);
+    }
+
+    function hasDirtyContactDiscoveryEdits() {
+      return Object.values(contactDiscoveryEdits).some((entry) => entry?.dirty === true || entry?.saving === true);
     }
 
     function renderPublicistSource(sourceDoc) {
@@ -1496,6 +1542,180 @@
       `;
     }
 
+    function renderOutreachLog(doc) {
+      const summary = byId('outreach-log-summary');
+      const source = byId('outreach-log-source');
+      const groupsRoot = byId('outreach-log-groups');
+      const groups = doc?.groups || {};
+      const meta = doc?.summary || {};
+
+      summary.textContent = [
+        `not_sent: ${meta.not_sent ?? 0}`,
+        `sent_manually: ${meta.sent_manually ?? 0}`,
+        `replied: ${meta.replied ?? 0}`,
+        `follow_up_needed: ${meta.follow_up_needed ?? 0}`,
+        `closed: ${meta.closed ?? 0}`
+      ].join('  ');
+
+      source.textContent = [
+        `workspace: ${doc?.workspace || ''}`,
+        `log: ${doc?.path || ''}`,
+        `drafts: ${doc?.message_drafts_path || ''}`,
+        `decisions: ${doc?.review_decisions_path || ''}`
+      ].filter(Boolean).join('  ');
+
+      if ((reviewEditorHasFocus() || hasDirtyOutreachLogEdits()) && outreachLogInitialized) {
+        return;
+      }
+
+      const order = [
+        ['not_sent', 'Not Sent'],
+        ['sent_manually', 'Sent Manually'],
+        ['replied', 'Replied'],
+        ['follow_up_needed', 'Follow Up Needed'],
+        ['closed', 'Closed']
+      ];
+
+      groupsRoot.innerHTML = order.map(([key, label]) => {
+        const rows = groups[key] || [];
+        const body = rows.length
+          ? rows.map((entry) => {
+              const draftId = entry.draft_id || '';
+              const current = outreachLogEdits[draftId] || {};
+              const statusValue = (current.dirty === true || current.saving === true) ? (current.status ?? entry.status ?? 'not_sent') : (entry.status || 'not_sent');
+              const sentValue = (current.dirty === true || current.saving === true) ? (current.sent_manually_at ?? entry.sent_manually_at ?? '') : (entry.sent_manually_at || '');
+              const responseValue = (current.dirty === true || current.saving === true) ? (current.response_status ?? entry.response_status ?? 'none') : (entry.response_status || 'none');
+              const followUpValue = (current.dirty === true || current.saving === true) ? (current.follow_up_date ?? entry.follow_up_date ?? '') : (entry.follow_up_date || '');
+              const notesValue = (current.dirty === true || current.saving === true) ? (current.notes ?? entry.notes ?? '') : (entry.notes || '');
+              const saveStatus = current.statusText || '';
+              return `
+                <div class="research-entry">
+                  <div><strong>${escapeHtml(entry.organization || '')}</strong></div>
+                  <div class="mono">${escapeHtml(draftId)} / ${escapeHtml(entry.audience || '')} / ${escapeHtml(entry.channel || '')}</div>
+                  <div class="research-editor" data-outreach-log-id="${escapeHtml(draftId)}">
+                    <select class="outreach-log-select" data-draft-id="${escapeHtml(draftId)}">
+                      <option value="not_sent" ${statusValue === 'not_sent' ? 'selected' : ''}>not_sent</option>
+                      <option value="sent_manually" ${statusValue === 'sent_manually' ? 'selected' : ''}>sent_manually</option>
+                      <option value="replied" ${statusValue === 'replied' ? 'selected' : ''}>replied</option>
+                      <option value="follow_up_needed" ${statusValue === 'follow_up_needed' ? 'selected' : ''}>follow_up_needed</option>
+                      <option value="closed" ${statusValue === 'closed' ? 'selected' : ''}>closed</option>
+                    </select>
+                    <input type="text" class="outreach-log-input" data-draft-id="${escapeHtml(draftId)}" data-field="sent_manually_at" value="${escapeHtml(sentValue)}" placeholder="sent_manually_at">
+                    <input type="text" class="outreach-log-input" data-draft-id="${escapeHtml(draftId)}" data-field="response_status" value="${escapeHtml(responseValue)}" placeholder="response_status">
+                    <input type="text" class="outreach-log-input" data-draft-id="${escapeHtml(draftId)}" data-field="follow_up_date" value="${escapeHtml(followUpValue)}" placeholder="follow_up_date">
+                    <textarea class="outreach-log-notes-input" data-draft-id="${escapeHtml(draftId)}" placeholder="notes">${escapeHtml(notesValue)}</textarea>
+                    <div class="review-actions">
+                      <button type="button" class="outreach-log-save-button" data-draft-id="${escapeHtml(draftId)}">Save</button>
+                    </div>
+                    <div class="review-save-status mono" data-outreach-log-id="${escapeHtml(draftId)}">${escapeHtml(saveStatus)}</div>
+                  </div>
+                </div>
+              `;
+            }).join('')
+          : '<div class="hint">none</div>';
+        return `
+          <div class="research-group">
+            <h3>${label} (${rows.length})</h3>
+            ${body}
+          </div>
+        `;
+      }).join('');
+
+      outreachLogInitialized = true;
+
+      const captureOutreachState = (draftId) => {
+        const statusNode = groupsRoot.querySelector(`.outreach-log-select[data-draft-id="${draftId}"]`);
+        const sentNode = groupsRoot.querySelector(`.outreach-log-input[data-draft-id="${draftId}"][data-field="sent_manually_at"]`);
+        const responseNode = groupsRoot.querySelector(`.outreach-log-input[data-draft-id="${draftId}"][data-field="response_status"]`);
+        const followNode = groupsRoot.querySelector(`.outreach-log-input[data-draft-id="${draftId}"][data-field="follow_up_date"]`);
+        const notesNode = groupsRoot.querySelector(`.outreach-log-notes-input[data-draft-id="${draftId}"]`);
+        outreachLogEdits[draftId] = {
+          ...(outreachLogEdits[draftId] || {}),
+          status: statusNode ? statusNode.value : 'not_sent',
+          sent_manually_at: sentNode ? sentNode.value : '',
+          response_status: responseNode ? responseNode.value : 'none',
+          follow_up_date: followNode ? followNode.value : '',
+          notes: notesNode ? notesNode.value : '',
+          dirty: true,
+          saving: false,
+          statusText: 'unsaved'
+        };
+        const saveStatusNode = groupsRoot.querySelector(`.review-save-status[data-outreach-log-id="${CSS.escape(draftId)}"]`);
+        if (saveStatusNode) saveStatusNode.textContent = 'unsaved';
+      };
+
+      groupsRoot.querySelectorAll('.outreach-log-select, .outreach-log-input, .outreach-log-notes-input').forEach((node) => {
+        node.addEventListener('input', () => {
+          const draftId = node.getAttribute('data-draft-id') || '';
+          if (!draftId) return;
+          captureOutreachState(draftId);
+        });
+      });
+
+      groupsRoot.querySelectorAll('.outreach-log-save-button').forEach((node) => {
+        node.addEventListener('click', async () => {
+          const draftId = node.getAttribute('data-draft-id') || '';
+          if (!draftId) return;
+          const saveStatusNode = groupsRoot.querySelector(`.review-save-status[data-outreach-log-id="${CSS.escape(draftId)}"]`);
+          const statusNode = groupsRoot.querySelector(`.outreach-log-select[data-draft-id="${draftId}"]`);
+          const sentNode = groupsRoot.querySelector(`.outreach-log-input[data-draft-id="${draftId}"][data-field="sent_manually_at"]`);
+          const responseNode = groupsRoot.querySelector(`.outreach-log-input[data-draft-id="${draftId}"][data-field="response_status"]`);
+          const followNode = groupsRoot.querySelector(`.outreach-log-input[data-draft-id="${draftId}"][data-field="follow_up_date"]`);
+          const notesNode = groupsRoot.querySelector(`.outreach-log-notes-input[data-draft-id="${draftId}"]`);
+          outreachLogEdits[draftId] = {
+            status: statusNode ? statusNode.value : 'not_sent',
+            sent_manually_at: sentNode ? sentNode.value : '',
+            response_status: responseNode ? responseNode.value : 'none',
+            follow_up_date: followNode ? followNode.value : '',
+            notes: notesNode ? notesNode.value : '',
+            dirty: false,
+            saving: true,
+            statusText: 'saving...'
+          };
+          if (saveStatusNode) saveStatusNode.textContent = 'saving...';
+          node.disabled = true;
+          try {
+            const res = await fetch('/api/outreach_log', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                draft_id: draftId,
+                status: outreachLogEdits[draftId].status,
+                sent_manually_at: outreachLogEdits[draftId].sent_manually_at,
+                response_status: outreachLogEdits[draftId].response_status,
+                follow_up_date: outreachLogEdits[draftId].follow_up_date,
+                notes: outreachLogEdits[draftId].notes
+              })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) throw new Error(data.error || 'outreach log save failed');
+            outreachLogEdits[draftId] = {
+              status: data?.entry?.status || 'not_sent',
+              sent_manually_at: data?.entry?.sent_manually_at || '',
+              response_status: data?.entry?.response_status || 'none',
+              follow_up_date: data?.entry?.follow_up_date || '',
+              notes: data?.entry?.notes || '',
+              dirty: false,
+              saving: false,
+              statusText: `saved ${formatLocalTime(data?.entry?.sent_manually_at || '') || ''}`.trim()
+            };
+            if (saveStatusNode) saveStatusNode.textContent = outreachLogEdits[draftId].statusText;
+            await refresh();
+          } catch (err) {
+            outreachLogEdits[draftId] = {
+              ...(outreachLogEdits[draftId] || {}),
+              dirty: true,
+              saving: false,
+              statusText: String(err?.message || err)
+            };
+            if (saveStatusNode) saveStatusNode.textContent = outreachLogEdits[draftId].statusText;
+          } finally {
+            node.disabled = false;
+          }
+        });
+      });
+    }
+
     function renderResearchRequests(research) {
       const summary = byId('research-requests-summary');
       const source = byId('research-requests-source');
@@ -1737,6 +1957,337 @@
       `;
     }
 
+    function renderTargetCandidates(doc) {
+      const summary = byId('target-candidates-summary');
+      const source = byId('target-candidates-source');
+      const groupsRoot = byId('target-candidates-groups');
+      const groups = doc?.groups || {};
+      const summaryMeta = doc?.summary || {};
+      const byAudience = summaryMeta.by_audience || {};
+      const byTargetType = summaryMeta.by_target_type || {};
+      const byConfidence = summaryMeta.by_confidence || {};
+
+      summary.textContent = [
+        `total_candidates: ${summaryMeta.total_candidates ?? (doc?.target_candidates || []).length ?? 0}`,
+        `audiences: ${Object.keys(byAudience).length}`,
+        `target_types: ${Object.keys(byTargetType).length}`
+      ].join('  ');
+
+      source.textContent = [
+        `workspace: ${doc?.workspace || ''}`,
+        `candidates: ${doc?.path || ''}`,
+        `research_results: ${doc?.research_results_path || ''}`,
+        `qualified: ${doc?.qualified_targets_path || ''}`,
+        `packet: ${doc?.review_packet_path || ''}`,
+        `by_confidence: ${Object.entries(byConfidence).map(([k, v]) => `${k}=${v}`).join(' | ')}`
+      ].filter(Boolean).join('  ');
+
+      if ((reviewEditorHasFocus() || hasDirtyTargetCandidateEdits()) && targetCandidatesInitialized) {
+        return;
+      }
+
+      const audienceNames = Object.keys(groups).sort();
+      groupsRoot.innerHTML = audienceNames.length
+        ? audienceNames.map((audience) => {
+            const rows = Array.isArray(groups[audience]) ? groups[audience] : [];
+            const rendered = rows.map((row) => `
+              <div class="research-entry">
+                <div><strong>${escapeHtml(row.organization_name || '')}</strong></div>
+                <div class="mono">candidate_id: ${escapeHtml(row.candidate_id || '')}</div>
+                <div class="mono">website: ${escapeHtml(row.website || '')}  type: ${escapeHtml(row.target_type || '')}  confidence: ${escapeHtml(row.confidence || '')}</div>
+                <div class="mono">request: ${escapeHtml(row.source_request_id || '')}  extracted_from: ${escapeHtml(row.extracted_from || '')}</div>
+                <div class="mono">source_urls: ${escapeHtml((row.source_urls || []).join(' | '))}</div>
+                <div class="review-notes">${escapeHtml(row.relevance_reason || '')}</div>
+                <div class="research-editor" data-candidate-id="${escapeHtml(row.candidate_id || '')}">
+                  <textarea class="target-candidate-notes-input" data-candidate-id="${escapeHtml(row.candidate_id || '')}" placeholder="reviewer notes">${escapeHtml(((targetCandidateEdits[row.candidate_id || '']?.dirty || targetCandidateEdits[row.candidate_id || '']?.saving) ? targetCandidateEdits[row.candidate_id || '']?.reviewer_notes : row.reviewer_notes) || '')}</textarea>
+                  <div class="review-actions">
+                    <button type="button" class="target-candidate-save-button" data-candidate-id="${escapeHtml(row.candidate_id || '')}" data-review-status="approved">Approve Target</button>
+                    <button type="button" class="target-candidate-save-button" data-candidate-id="${escapeHtml(row.candidate_id || '')}" data-review-status="rejected">Reject Target</button>
+                    <button type="button" class="target-candidate-save-button" data-candidate-id="${escapeHtml(row.candidate_id || '')}" data-review-status="maybe_later">Maybe Later</button>
+                  </div>
+                  <div class="review-save-status mono" data-candidate-id="${escapeHtml(row.candidate_id || '')}">${escapeHtml(targetCandidateEdits[row.candidate_id || '']?.status || `status: ${row.review_status || 'pending_review'}`)}</div>
+                </div>
+              </div>
+            `).join('');
+            return `
+              <div class="research-group">
+                <h3>${escapeHtml(audience)}</h3>
+                <div class="hint mono">count: ${rows.length}</div>
+                ${rendered || '<div class="hint">none</div>'}
+              </div>
+            `;
+          }).join('')
+        : '<div class="hint">no target candidates yet</div>';
+
+      targetCandidatesInitialized = true;
+
+      groupsRoot.querySelectorAll('.target-candidate-notes-input').forEach((node) => {
+        node.addEventListener('input', () => {
+          const candidateId = node.getAttribute('data-candidate-id') || '';
+          if (!candidateId) return;
+          targetCandidateEdits[candidateId] = {
+            ...(targetCandidateEdits[candidateId] || {}),
+            reviewer_notes: node.value,
+            dirty: true,
+            saving: false,
+            status: 'unsaved'
+          };
+          const statusNode = groupsRoot.querySelector(`.review-save-status[data-candidate-id="${candidateId}"]`);
+          if (statusNode) statusNode.textContent = 'unsaved';
+        });
+      });
+
+      groupsRoot.querySelectorAll('.target-candidate-save-button').forEach((node) => {
+        node.addEventListener('click', async () => {
+          const candidateId = node.getAttribute('data-candidate-id') || '';
+          const reviewStatus = node.getAttribute('data-review-status') || '';
+          const notesNode = groupsRoot.querySelector(`.target-candidate-notes-input[data-candidate-id="${candidateId}"]`);
+          const statusNode = groupsRoot.querySelector(`.review-save-status[data-candidate-id="${candidateId}"]`);
+          const reviewerNotes = notesNode ? notesNode.value : '';
+          targetCandidateEdits[candidateId] = {
+            ...(targetCandidateEdits[candidateId] || {}),
+            reviewer_notes: reviewerNotes,
+            dirty: false,
+            saving: true,
+            status: 'saving...'
+          };
+          if (statusNode) statusNode.textContent = 'saving...';
+          groupsRoot.querySelectorAll(`.target-candidate-save-button[data-candidate-id="${candidateId}"]`).forEach((button) => {
+            button.disabled = true;
+          });
+          try {
+            const res = await fetch('/api/target_candidate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                candidate_id: candidateId,
+                review_status: reviewStatus,
+                reviewer_notes: reviewerNotes
+              })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+              throw new Error(data.error || 'target candidate save failed');
+            }
+            targetCandidateEdits[candidateId] = {
+              reviewer_notes: data?.candidate?.reviewer_notes || '',
+              dirty: false,
+              saving: false,
+              status: `saved ${reviewStatus} ${formatLocalTime(data?.candidate?.reviewed_at || '')}`
+            };
+            if (statusNode) statusNode.textContent = targetCandidateEdits[candidateId].status;
+            await refresh();
+          } catch (err) {
+            targetCandidateEdits[candidateId] = {
+              ...(targetCandidateEdits[candidateId] || {}),
+              reviewer_notes: reviewerNotes,
+              dirty: true,
+              saving: false,
+              status: String(err?.message || err)
+            };
+            if (statusNode) statusNode.textContent = targetCandidateEdits[candidateId].status;
+          } finally {
+            groupsRoot.querySelectorAll(`.target-candidate-save-button[data-candidate-id="${candidateId}"]`).forEach((button) => {
+              button.disabled = false;
+            });
+          }
+        });
+      });
+    }
+
+    function renderContactDiscovery(doc) {
+      const summary = byId('contact-discovery-summary');
+      const source = byId('contact-discovery-source');
+      const groupsRoot = byId('contact-discovery-groups');
+      const requests = Array.isArray(doc?.contact_discovery_requests) ? doc.contact_discovery_requests : [];
+      const counts = doc?.counts || {};
+
+      summary.textContent = [
+        `requests: ${doc?.summary?.total_requests ?? requests.length}`,
+        `planned_only: ${counts.planned_only ?? 0}`,
+        `approved: ${counts.approved ?? 0}`,
+        `rejected: ${counts.rejected ?? 0}`
+      ].join('  ');
+
+      source.textContent = [
+        `workspace: ${doc?.workspace || ''}`,
+        `requests: ${doc?.path || ''}`,
+        `qualified_targets: ${doc?.qualified_targets_path || ''}`
+      ].filter(Boolean).join('  ');
+
+      if ((reviewEditorHasFocus() || hasDirtyContactDiscoveryEdits()) && contactDiscoveryInitialized) {
+        return;
+      }
+
+      groupsRoot.innerHTML = requests.length
+        ? requests.map((request) => {
+            const requestId = request.request_id || '';
+            const rows = Array.isArray(request.proposed_urls) ? request.proposed_urls : [];
+            const body = rows.length
+              ? rows.map((row) => {
+                  const editKey = `${requestId}::${row.url || ''}`;
+                  const current = contactDiscoveryEdits[editKey] || {};
+                  const notesValue = escapeHtml(((current.dirty || current.saving) ? current.reviewer_notes : row.reviewer_notes) || '');
+                  const statusText = escapeHtml(row.review_status || 'planned_only');
+                  const saveStatus = escapeHtml(current.status || `status: ${row.review_status || 'planned_only'}`);
+                  return `
+                    <div class="research-entry">
+                      <div class="mono">${escapeHtml(row.url || '')}</div>
+                      <div class="review-meta">status: ${statusText}</div>
+                      <div class="research-editor" data-contact-discovery-key="${escapeHtml(editKey)}">
+                        <textarea class="contact-discovery-notes-input" data-request-id="${escapeHtml(requestId)}" data-url="${escapeHtml(row.url || '')}" placeholder="reviewer notes">${notesValue}</textarea>
+                        <div class="review-actions">
+                          <button type="button" class="contact-discovery-save-button" data-request-id="${escapeHtml(requestId)}" data-url="${escapeHtml(row.url || '')}" data-review-status="approved">Approve URL</button>
+                          <button type="button" class="contact-discovery-save-button" data-request-id="${escapeHtml(requestId)}" data-url="${escapeHtml(row.url || '')}" data-review-status="rejected">Reject URL</button>
+                          <button type="button" class="contact-discovery-save-button" data-request-id="${escapeHtml(requestId)}" data-url="${escapeHtml(row.url || '')}" data-review-status="planned_only">Pending</button>
+                        </div>
+                        <div class="review-save-status mono" data-contact-discovery-key="${escapeHtml(editKey)}">${saveStatus}</div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')
+              : '<div class="hint">none</div>';
+            return `
+              <div class="research-group">
+                <h3>${escapeHtml(request.organization_name || '')} (${escapeHtml(request.audience || '')})</h3>
+                <div class="hint mono">${escapeHtml(request.request_id || '')}</div>
+                ${body}
+              </div>
+            `;
+          }).join('')
+        : '<div class="hint">no contact discovery requests yet</div>';
+
+      contactDiscoveryInitialized = true;
+
+      groupsRoot.querySelectorAll('.contact-discovery-notes-input').forEach((node) => {
+        node.addEventListener('input', () => {
+          const requestId = node.getAttribute('data-request-id') || '';
+          const url = node.getAttribute('data-url') || '';
+          const editKey = `${requestId}::${url}`;
+          contactDiscoveryEdits[editKey] = {
+            ...(contactDiscoveryEdits[editKey] || {}),
+            reviewer_notes: node.value,
+            dirty: true,
+            saving: false,
+            status: 'unsaved'
+          };
+          const statusNode = groupsRoot.querySelector(`.review-save-status[data-contact-discovery-key="${CSS.escape(editKey)}"]`);
+          if (statusNode) statusNode.textContent = 'unsaved';
+        });
+      });
+
+      groupsRoot.querySelectorAll('.contact-discovery-save-button').forEach((node) => {
+        node.addEventListener('click', async () => {
+          const requestId = node.getAttribute('data-request-id') || '';
+          const url = node.getAttribute('data-url') || '';
+          const reviewStatus = node.getAttribute('data-review-status') || '';
+          const editKey = `${requestId}::${url}`;
+          const notesNode = groupsRoot.querySelector(`.contact-discovery-notes-input[data-request-id="${requestId}"][data-url="${url}"]`);
+          const statusNode = groupsRoot.querySelector(`.review-save-status[data-contact-discovery-key="${CSS.escape(editKey)}"]`);
+          const reviewerNotes = notesNode ? notesNode.value : '';
+          contactDiscoveryEdits[editKey] = {
+            ...(contactDiscoveryEdits[editKey] || {}),
+            reviewer_notes: reviewerNotes,
+            dirty: false,
+            saving: true,
+            status: 'saving...'
+          };
+          if (statusNode) statusNode.textContent = 'saving...';
+          groupsRoot.querySelectorAll(`.contact-discovery-save-button[data-request-id="${requestId}"][data-url="${url}"]`).forEach((button) => {
+            button.disabled = true;
+          });
+          try {
+            const res = await fetch('/api/contact_discovery_request', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                request_id: requestId,
+                url,
+                review_status: reviewStatus,
+                reviewer_notes: reviewerNotes
+              })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.ok) {
+              throw new Error(data.error || 'contact discovery save failed');
+            }
+            contactDiscoveryEdits[editKey] = {
+              reviewer_notes: data?.proposed_url?.reviewer_notes || '',
+              dirty: false,
+              saving: false,
+              status: `saved ${reviewStatus} ${formatLocalTime(data?.proposed_url?.reviewed_at || '')}`
+            };
+            if (statusNode) statusNode.textContent = contactDiscoveryEdits[editKey].status;
+            await refresh();
+          } catch (err) {
+            contactDiscoveryEdits[editKey] = {
+              ...(contactDiscoveryEdits[editKey] || {}),
+              reviewer_notes: reviewerNotes,
+              dirty: true,
+              saving: false,
+              status: String(err?.message || err)
+            };
+            if (statusNode) statusNode.textContent = contactDiscoveryEdits[editKey].status;
+          } finally {
+            groupsRoot.querySelectorAll(`.contact-discovery-save-button[data-request-id="${requestId}"][data-url="${url}"]`).forEach((button) => {
+              button.disabled = false;
+            });
+          }
+        });
+      });
+    }
+
+    function renderContactPageResults(doc) {
+      const summary = byId('contact-page-results-summary');
+      const source = byId('contact-page-results-source');
+      const blocks = byId('contact-page-results-blocks');
+      const summaryMeta = doc?.summary || {};
+      const results = Array.isArray(doc?.results) ? doc.results : [];
+      const skipped = Array.isArray(doc?.skipped) ? doc.skipped : [];
+
+      summary.textContent = [
+        `approved_url_count: ${summaryMeta.approved_url_count ?? 0}`,
+        `fetched_result_count: ${summaryMeta.fetched_result_count ?? results.length}`,
+        `skipped_count: ${summaryMeta.skipped_count ?? skipped.length}`
+      ].join('  ');
+
+      source.textContent = [
+        `workspace: ${doc?.workspace || ''}`,
+        `results: ${doc?.path || ''}`,
+        `requests: ${doc?.contact_discovery_requests_path || ''}`,
+        `packet: ${doc?.review_packet_path || ''}`
+      ].filter(Boolean).join('  ');
+
+      const renderRows = (rows, fn) => rows.length
+        ? rows.map((row) => `<div class="insight-row">${fn(row)}</div>`).join('')
+        : '<div class="hint">none</div>';
+
+      blocks.innerHTML = `
+        <div class="insight-block">
+          <h3>Fetched Contact Pages</h3>
+          ${renderRows(results, (row) => `
+            <div><strong>${escapeHtml(row.organization_name || '')}</strong></div>
+            <div class="mono">${escapeHtml(row.url || '')}</div>
+            <div class="mono">status_code: ${escapeHtml(String(row.status_code ?? 'n/a'))}  fetched_at: ${escapeHtml(formatLocalTime(row.fetched_at || ''))}</div>
+            <div>${escapeHtml(row.page_title || '')}</div>
+            <div class="review-notes">${escapeHtml(row.clean_text_excerpt || '')}</div>
+            <div class="mono">emails: ${escapeHtml((row.found_emails || []).join(' | ') || 'none')}</div>
+            <div class="mono">forms: ${escapeHtml((row.found_contact_forms || []).map((item) => `${item.method || 'GET'} ${item.url || ''}`).join(' | ') || 'none')}</div>
+            <div class="mono">social: ${escapeHtml((row.found_social_links || []).join(' | ') || 'none')}</div>
+            <div class="mono">errors: ${escapeHtml((row.errors || []).join(' | ') || 'none')}</div>
+          `)}
+        </div>
+        <div class="insight-block">
+          <h3>Skipped Contact Pages</h3>
+          ${renderRows(skipped, (row) => `
+            <div><strong>${escapeHtml(row.request_id || '')}</strong></div>
+            <div class="mono">${escapeHtml(row.url || '')}</div>
+            <div class="mono">reason: ${escapeHtml(row.reason || '')}</div>
+          `)}
+        </div>
+      `;
+    }
+
     function renderKillButton(run) {
       const button = byId('kill-button');
       const pid = run?.pid;
@@ -1832,9 +2383,13 @@
       renderPublicistCampaignConfig(data.publicist_campaign_config || {});
       renderAudienceSuggestions(data.publicist_audience_suggestions || {});
       renderReviewDecisions(data.publicist_review || {}, data.publicist_enriched_drafts || {});
+      renderOutreachLog(data.publicist_outreach_log || {});
       renderSqliteInsights(data.publicist_sqlite_insights || {});
       renderResearchRequests(data.publicist_research_requests || {});
       renderResearchResults(data.publicist_research_results || {});
+      renderTargetCandidates(data.publicist_target_candidates || {});
+      renderContactDiscovery(data.publicist_contact_discovery_requests || {});
+      renderContactPageResults(data.publicist_contact_page_results || {});
       renderSteps(data.steps);
       byId('latest-log').textContent = data.latest_log || '';
       byId('latest-err').textContent = data.latest_err || '';

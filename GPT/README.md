@@ -17,3 +17,10 @@ Suggested use:
 - when a step fails, inspect its memory file first
 - if the real cause is upstream, follow the listed dependency chain
 - when code changes invalidate a memory file, update it in the same work
+
+Current high-value recipe memory:
+- `publicist_draft_agent/recipe_overview.md`
+- `publicist_draft_agent/load_material.md`
+- `publicist_draft_agent/init_review_decisions.md`
+- `publicist_draft_agent/plan_research_requests.md`
+- `publicist_draft_agent/workspace_and_ui.md`

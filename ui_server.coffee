@@ -1,4 +1,13 @@
 #!/usr/bin/env coffee
+###
+UI server notes
+---------------------------------------------------------------------------
+- Preferred refresh workflow for testing:
+  switch pipe or change pipeline from the UI.
+- In this environment that reliably kills the old UI server and starts a new
+  one, so use that before spawning a separate test instance on another port.
+- `UI_PORT` still exists for fallback testing when needed.
+###
 fs = require 'fs'
 path = require 'path'
 http = require 'http'
@@ -40,6 +49,9 @@ readText = (p, fallback = '') ->
 writeText = (p, text) ->
   fs.mkdirSync path.dirname(p), { recursive: true }
   fs.writeFileSync p, text, 'utf8'
+
+normalizeText = (value) ->
+  String(value ? '').trim()
 
 ensurePublicistSourceFile = (workspacePath = CWD) ->
   base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
@@ -621,10 +633,12 @@ publicistArtifactPaths = (workspacePath = CWD) ->
   relative = (name) -> path.join('out', name)
   {
     source_material: relative('source_material.yaml')
+    audience_suggestions: relative('audience_suggestions.yaml')
     audience_profiles: relative('audience_profiles.yaml')
     contact_ledger: relative('contact_ledger.yaml')
     message_drafts: relative('message_drafts.yaml')
     review_decisions: relative('review_decisions.yaml')
+    outreach_log: relative('outreach_log.yaml')
     sqlite_load_report: relative('sqlite_load_report.yaml')
     sqlite_init_report: relative('sqlite_init_report.yaml')
     sqlite_write_report: relative('sqlite_write_report.yaml')
@@ -632,6 +646,10 @@ publicistArtifactPaths = (workspacePath = CWD) ->
     next_actions: relative('next_actions.yaml')
     research_requests: relative('research_requests.yaml')
     research_results: relative('research_results.yaml')
+    target_candidates: relative('target_candidates.yaml')
+    qualified_targets: relative('qualified_targets.yaml')
+    contact_discovery_requests: relative('contact_discovery_requests.yaml')
+    contact_page_results: relative('contact_page_results.yaml')
     enriched_drafts: relative('enriched_drafts.yaml')
     review_packet: relative('review_packet.md')
   }
@@ -781,11 +799,241 @@ readPublicistResearchResultsUi = (workspacePath = CWD) ->
   {
     path: if fs.existsSync(resultsPath) then path.relative(base, resultsPath) else 'out/research_results.yaml'
     workspace: base
+    target_candidates_path: artifactPaths.target_candidates
     enriched_drafts_path: artifactPaths.enriched_drafts
     review_packet_path: artifactPaths.review_packet
     summary: resultsDoc?.summary ? {}
     results: if Array.isArray(resultsDoc?.results) then resultsDoc.results else []
     skipped: if Array.isArray(resultsDoc?.skipped) then resultsDoc.skipped else []
+  }
+
+readPublicistTargetCandidatesUi = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  candidatesPath = path.join(base, 'out', 'target_candidates.yaml')
+  candidatesDoc = if fs.existsSync(candidatesPath) then readYaml(candidatesPath) else {}
+  candidates = if Array.isArray(candidatesDoc?.target_candidates) then candidatesDoc.target_candidates else []
+  artifactPaths = publicistArtifactPaths(base)
+
+  groups = {}
+  for row in candidates when row?.audience?
+    groups[row.audience] ?= []
+    groups[row.audience].push row
+
+  {
+    path: if fs.existsSync(candidatesPath) then path.relative(base, candidatesPath) else 'out/target_candidates.yaml'
+    workspace: base
+    research_results_path: artifactPaths.research_results
+    qualified_targets_path: artifactPaths.qualified_targets
+    contact_discovery_requests_path: artifactPaths.contact_discovery_requests
+    review_packet_path: artifactPaths.review_packet
+    summary: candidatesDoc?.summary ? {}
+    target_candidates: candidates
+    groups: groups
+  }
+
+readPublicistContactDiscoveryUi = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  requestsPath = path.join(base, 'out', 'contact_discovery_requests.yaml')
+  doc = if fs.existsSync(requestsPath) then readYaml(requestsPath) else {}
+  requests = if Array.isArray(doc?.contact_discovery_requests) then doc.contact_discovery_requests else []
+  artifactPaths = publicistArtifactPaths(base)
+
+  counts =
+    approved: 0
+    rejected: 0
+    planned_only: 0
+
+  for request in requests
+    for row in (request.proposed_urls ? [])
+      status = String(row?.review_status ? 'planned_only').trim().toLowerCase()
+      if status is 'approved'
+        counts.approved += 1
+      else if status is 'rejected'
+        counts.rejected += 1
+      else
+        counts.planned_only += 1
+
+  {
+    path: if fs.existsSync(requestsPath) then path.relative(base, requestsPath) else 'out/contact_discovery_requests.yaml'
+    workspace: base
+    qualified_targets_path: artifactPaths.qualified_targets
+    contact_page_results_path: artifactPaths.contact_page_results
+    summary: doc?.summary ? {}
+    counts: counts
+    contact_discovery_requests: requests
+  }
+
+readPublicistContactPageResultsUi = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  resultsPath = path.join(base, 'out', 'contact_page_results.yaml')
+  doc = if fs.existsSync(resultsPath) then readYaml(resultsPath) else {}
+  artifactPaths = publicistArtifactPaths(base)
+
+  {
+    path: if fs.existsSync(resultsPath) then path.relative(base, resultsPath) else 'out/contact_page_results.yaml'
+    workspace: base
+    contact_discovery_requests_path: artifactPaths.contact_discovery_requests
+    review_packet_path: artifactPaths.review_packet
+    summary: doc?.summary ? {}
+    results: if Array.isArray(doc?.results) then doc.results else []
+    skipped: if Array.isArray(doc?.skipped) then doc.skipped else []
+  }
+
+readPublicistOutreachLogUi = (workspacePath = CWD) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  logPath = path.join(base, 'out', 'outreach_log.yaml')
+  doc = if fs.existsSync(logPath) then readYaml(logPath) else {}
+  entries = if Array.isArray(doc?.entries) then doc.entries else []
+  artifactPaths = publicistArtifactPaths(base)
+  groups =
+    not_sent: []
+    sent_manually: []
+    replied: []
+    follow_up_needed: []
+    closed: []
+  for entry in entries
+    status = String(entry?.status ? 'not_sent').trim().toLowerCase()
+    if groups[status]?
+      groups[status].push entry
+    else
+      groups.not_sent.push entry
+  {
+    path: if fs.existsSync(logPath) then path.relative(base, logPath) else 'out/outreach_log.yaml'
+    workspace: base
+    message_drafts_path: artifactPaths.message_drafts
+    review_decisions_path: artifactPaths.review_decisions
+    summary: doc?.summary ? {}
+    groups: groups
+    entries: entries
+  }
+
+saveTargetCandidateUpdate = (workspacePath, payload) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  candidatesPath = path.join(base, 'out', 'target_candidates.yaml')
+  return { ok: false, error: 'target candidates file not found', path: candidatesPath } unless fs.existsSync(candidatesPath)
+
+  doc = readYaml(candidatesPath)
+  candidates = if Array.isArray(doc?.target_candidates) then doc.target_candidates.slice() else []
+  candidateId = String(payload?.candidate_id ? '').trim()
+  return { ok: false, error: 'candidate_id is required', path: candidatesPath } unless candidateId.length
+
+  statusText = String(payload?.review_status ? '').trim().toLowerCase()
+  normalizedStatus = switch statusText
+    when 'approved', 'approve' then 'approved'
+    when 'rejected', 'reject' then 'rejected'
+    when 'maybe_later', 'maybe', 'later', 'pending', 'pending_review' then 'maybe_later'
+    else null
+  return { ok: false, error: "invalid review_status '#{statusText}'", path: candidatesPath } unless normalizedStatus?
+
+  entryIndex = candidates.findIndex (entry) -> String(entry?.candidate_id ? '').trim() is candidateId
+  return { ok: false, error: "candidate_id not found '#{candidateId}'", path: candidatesPath } unless entryIndex >= 0
+
+  currentEntry = candidates[entryIndex] ? {}
+  nextEntry = Object.assign {}, currentEntry,
+    review_status: normalizedStatus
+    reviewer_notes: String(payload?.reviewer_notes ? '')
+    reviewed_at: new Date().toISOString()
+
+  candidates[entryIndex] = nextEntry
+
+  groups = {}
+  byAudience = {}
+  byTargetType = {}
+  byConfidence = {}
+  for row in candidates when row?.audience?
+    groups[row.audience] ?= []
+    groups[row.audience].push row
+    byAudience[row.audience] = (byAudience[row.audience] ? 0) + 1
+    if row?.target_type?
+      byTargetType[row.target_type] = (byTargetType[row.target_type] ? 0) + 1
+    if row?.confidence?
+      byConfidence[row.confidence] = (byConfidence[row.confidence] ? 0) + 1
+
+  nextDoc = if doc? and typeof doc is 'object' and not Array.isArray(doc) then Object.assign({}, doc) else {}
+  nextDoc.target_candidates = candidates
+  nextDoc.groups_by_audience = groups
+  nextDoc.summary = Object.assign {}, nextDoc.summary ? {},
+    total_candidates: candidates.length
+    by_audience: byAudience
+    by_target_type: byTargetType
+    by_confidence: byConfidence
+    suggestion_only: true
+
+  writeText candidatesPath, dumpYaml(nextDoc)
+
+  {
+    ok: true
+    workspace: base
+    path: candidatesPath
+    candidate: nextEntry
+  }
+
+saveContactDiscoveryUpdate = (workspacePath, payload) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  requestsPath = path.join(base, 'out', 'contact_discovery_requests.yaml')
+  return { ok: false, error: 'contact discovery requests file not found', path: requestsPath } unless fs.existsSync(requestsPath)
+
+  doc = readYaml(requestsPath)
+  requests = if Array.isArray(doc?.contact_discovery_requests) then doc.contact_discovery_requests.slice() else []
+  requestId = String(payload?.request_id ? '').trim()
+  urlText = String(payload?.url ? '').trim()
+  return { ok: false, error: 'request_id is required', path: requestsPath } unless requestId.length
+  return { ok: false, error: 'url is required', path: requestsPath } unless urlText.length
+
+  statusText = String(payload?.review_status ? '').trim().toLowerCase()
+  normalizedStatus = switch statusText
+    when 'approved', 'approve' then 'approved'
+    when 'rejected', 'reject' then 'rejected'
+    when 'planned_only', 'pending' then 'planned_only'
+    else null
+  return { ok: false, error: "invalid review_status '#{statusText}'", path: requestsPath } unless normalizedStatus?
+
+  requestIndex = requests.findIndex (entry) -> String(entry?.request_id ? '').trim() is requestId
+  return { ok: false, error: "request_id not found '#{requestId}'", path: requestsPath } unless requestIndex >= 0
+
+  request = Object.assign {}, requests[requestIndex]
+  proposedUrls = if Array.isArray(request.proposed_urls) then request.proposed_urls.slice() else []
+  urlIndex = proposedUrls.findIndex (entry) -> String(entry?.url ? '').trim() is urlText
+  return { ok: false, error: "url not found '#{urlText}'", path: requestsPath } unless urlIndex >= 0
+
+  currentUrl = proposedUrls[urlIndex] ? {}
+  nextUrl = Object.assign {}, currentUrl,
+    review_status: normalizedStatus
+    reviewer_notes: String(payload?.reviewer_notes ? '')
+    reviewed_at: new Date().toISOString()
+
+  proposedUrls[urlIndex] = nextUrl
+  request.proposed_urls = proposedUrls
+  requests[requestIndex] = request
+
+  counts =
+    approved: 0
+    rejected: 0
+    planned_only: 0
+  for row in requests
+    for proposed in (row.proposed_urls ? [])
+      status = String(proposed?.review_status ? 'planned_only').trim().toLowerCase()
+      if status is 'approved'
+        counts.approved += 1
+      else if status is 'rejected'
+        counts.rejected += 1
+      else
+        counts.planned_only += 1
+
+  nextDoc = if doc? and typeof doc is 'object' and not Array.isArray(doc) then Object.assign({}, doc) else {}
+  nextDoc.contact_discovery_requests = requests
+  nextDoc.summary = Object.assign {}, nextDoc.summary ? {},
+    total_requests: requests.length
+    total_proposed_urls: requests.reduce(((sum, row) -> sum + (row.proposed_urls ? []).length), 0)
+    suggestion_only: true
+  writeText requestsPath, dumpYaml(nextDoc)
+
+  {
+    ok: true
+    workspace: base
+    path: requestsPath
+    proposed_url: nextUrl
+    counts: counts
   }
 
 readPublicistSourceUi = (workspacePath = CWD) ->
@@ -950,6 +1198,58 @@ saveResearchRequestUpdate = (workspacePath, payload) ->
     request: nextEntry
   }
 
+saveOutreachLogUpdate = (workspacePath, payload) ->
+  base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
+  logPath = path.join(base, 'out', 'outreach_log.yaml')
+  return { ok: false, error: 'outreach log file not found', path: logPath } unless fs.existsSync(logPath)
+
+  doc = readYaml(logPath)
+  entries = if Array.isArray(doc?.entries) then doc.entries.slice() else []
+  draftId = String(payload?.draft_id ? '').trim()
+  return { ok: false, error: 'draft_id is required', path: logPath } unless draftId.length
+
+  validStatuses = new Set(['not_sent', 'sent_manually', 'replied', 'follow_up_needed', 'closed'])
+  statusText = String(payload?.status ? '').trim().toLowerCase()
+  return { ok: false, error: "invalid status '#{statusText}'", path: logPath } unless validStatuses.has(statusText)
+
+  entryIndex = entries.findIndex (entry) -> String(entry?.draft_id ? '').trim() is draftId
+  return { ok: false, error: "draft_id not found '#{draftId}'", path: logPath } unless entryIndex >= 0
+
+  currentEntry = entries[entryIndex] ? {}
+  nextEntry = Object.assign {}, currentEntry,
+    status: statusText
+
+  if typeof payload.sent_manually_at is 'string'
+    nextEntry.sent_manually_at = String(payload.sent_manually_at).trim() or null
+  else if statusText is 'sent_manually' and not normalizeText(currentEntry.sent_manually_at).length
+    nextEntry.sent_manually_at = new Date().toISOString()
+
+  if typeof payload.response_status is 'string'
+    nextEntry.response_status = String(payload.response_status).trim() or 'none'
+  if typeof payload.follow_up_date is 'string'
+    nextEntry.follow_up_date = String(payload.follow_up_date).trim() or null
+  if typeof payload.notes is 'string'
+    nextEntry.notes = payload.notes
+
+  entries[entryIndex] = nextEntry
+  nextDoc = if doc? and typeof doc is 'object' and not Array.isArray(doc) then Object.assign({}, doc) else {}
+  nextDoc.entries = entries
+  nextDoc.entry_count = entries.length
+  nextDoc.summary =
+    not_sent: entries.filter((entry) -> String(entry?.status ? 'not_sent') is 'not_sent').length
+    sent_manually: entries.filter((entry) -> String(entry?.status ? '') is 'sent_manually').length
+    replied: entries.filter((entry) -> String(entry?.status ? '') is 'replied').length
+    follow_up_needed: entries.filter((entry) -> String(entry?.status ? '') is 'follow_up_needed').length
+    closed: entries.filter((entry) -> String(entry?.status ? '') is 'closed').length
+  writeText logPath, dumpYaml(nextDoc)
+
+  {
+    ok: true
+    workspace: base
+    path: logPath
+    entry: nextEntry
+  }
+
 savePublicistSourceUpdate = (workspacePath, payload) ->
   base = if isUsableWorkspace(workspacePath) then path.resolve(workspacePath) else CWD
   sourcePath = ensurePublicistSourceFile(base)
@@ -1050,6 +1350,10 @@ buildStatus = ->
     publicist_sqlite_insights: readPublicistSqliteInsightsUi(statusWorkspace)
     publicist_research_requests: readPublicistResearchRequestsUi(statusWorkspace)
     publicist_research_results: readPublicistResearchResultsUi(statusWorkspace)
+    publicist_target_candidates: readPublicistTargetCandidatesUi(statusWorkspace)
+    publicist_contact_discovery_requests: readPublicistContactDiscoveryUi(statusWorkspace)
+    publicist_contact_page_results: readPublicistContactPageResultsUi(statusWorkspace)
+    publicist_outreach_log: readPublicistOutreachLogUi(statusWorkspace)
   }
 
 isAllowedFilePath = (relativePath) ->
@@ -1630,6 +1934,66 @@ handleResearchRequestUpdate = (req, res) ->
 
   sendJson res, 200, result
 
+handleTargetCandidateUpdate = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  workspace = resolveStatusWorkspace(run)
+  result = saveTargetCandidateUpdate(workspace, payload)
+  return sendJson(res, 400, result) unless result.ok is true
+
+  sendJson res, 200, result
+
+handleContactDiscoveryUpdate = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  workspace = resolveStatusWorkspace(run)
+  result = saveContactDiscoveryUpdate(workspace, payload)
+  return sendJson(res, 400, result) unless result.ok is true
+
+  sendJson res, 200, result
+
+handleOutreachLogUpdate = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  workspace = resolveStatusWorkspace(run)
+  result = saveOutreachLogUpdate(workspace, payload)
+  return sendJson(res, 400, result) unless result.ok is true
+
+  sendJson res, 200, result
+
+handleOutreachLogUpdate = (req, res) ->
+  bodyText = await readRequestBody req
+  payload = {}
+  try
+    payload = JSON.parse(bodyText ? '{}')
+  catch
+    return sendJson res, 400, { ok: false, error: 'invalid json body' }
+
+  run = normalizeUiRun readJson path.join(CWD, 'state', 'ui-run.json'), {}
+  workspace = resolveStatusWorkspace(run)
+  result = saveOutreachLogUpdate(workspace, payload)
+  return sendJson(res, 400, result) unless result.ok is true
+
+  sendJson res, 200, result
+
 handlePublicistSourceUpdate = (req, res) ->
   bodyText = await readRequestBody req
   payload = {}
@@ -1792,6 +2156,21 @@ server = http.createServer (req, res) ->
         error: String(err?.message ? err)
   if url is '/api/research_request' and req.method is 'POST'
     return Promise.resolve(handleResearchRequestUpdate(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/target_candidate' and req.method is 'POST'
+    return Promise.resolve(handleTargetCandidateUpdate(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/contact_discovery_request' and req.method is 'POST'
+    return Promise.resolve(handleContactDiscoveryUpdate(req, res)).catch (err) ->
+      sendJson res, 500,
+        ok: false
+        error: String(err?.message ? err)
+  if url is '/api/outreach_log' and req.method is 'POST'
+    return Promise.resolve(handleOutreachLogUpdate(req, res)).catch (err) ->
       sendJson res, 500,
         ok: false
         error: String(err?.message ? err)

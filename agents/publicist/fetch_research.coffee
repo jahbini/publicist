@@ -49,12 +49,58 @@ normalizeAllowedTarget = (raw, allowQueryString = false) ->
 
 extractTitleAndText = (html) ->
   $ = cheerio.load String(html ? '')
-  title = $('title').first().text().replace(/\s+/g, ' ').trim()
-  text = $('body').text().replace(/\s+/g, ' ').trim()
+  $('script, style, iframe, noscript, svg, canvas, form, nav, header, footer, aside, menu').remove()
+  $('[class*="cookie"], [id*="cookie"], [class*="consent"], [id*="consent"], [class*="banner"], [id*="banner"]').remove()
+  $('[class*="nav"], [id*="nav"], [class*="menu"], [id*="menu"], [class*="tracking"], [id*="tracking"], [src*="googletagmanager"], [href*="login"], [href*="account"]').remove()
+
+  clean = (value) ->
+    String(value ? '')
+      .replace(/\s+/g, ' ')
+      .replace(/\b(privacy|terms|cookie settings|sign in|get started|menu)\b/ig, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  collectBlockText = (selector, limit = 20) ->
+    rows = []
+    $(selector).slice(0, limit).each (_, el) ->
+      text = clean($(el).text())
+      return unless text.length
+      return if /googletagmanager|window\.|document\.|localStorage|graphql|__BUILD_ID__/i.test(text)
+      return if text.length < 20
+      rows.push text
+    rows
+
+  title = clean($('title').first().text())
+  metaDescription = clean($('meta[name="description"]').attr('content'))
+  headings = collectBlockText('h1, h2', 12)
+  paragraphs = collectBlockText('p', 24)
+  ordered = []
+  seen = new Set()
+  pushUnique = (text) ->
+    value = clean(text)
+    return unless value.length
+    return if seen.has(value)
+    seen.add value
+    ordered.push value
+
+  pushUnique metaDescription if metaDescription.length
+  for text in headings
+    pushUnique text
+  for text in paragraphs
+    pushUnique text
+
+  excerpt = ordered.join(' ')
+  excerpt = excerpt.replace(/\s+/g, ' ').trim()
+  excerpt = if excerpt.length then excerpt.slice(0, 900) else 'No useful content extracted'
+
   {
     title: title
-    short_text_excerpt: text.slice(0, 500)
+    short_text_excerpt: excerpt
   }
+
+ensureExcerpt = (value) ->
+  text = String(value ? '').trim()
+  if text.length then text else 'No useful content extracted'
 
 isApprovedResearchRequest = (request) ->
   String(request?.status ? '').trim().toLowerCase() is 'approved_for_research' and Array.isArray(request?.allowed_domains) and request.allowed_domains.length > 0
@@ -160,15 +206,17 @@ sameApprovedHost = (a, b) ->
           if /^text\/html\b/i.test(contentType) or contentType.length is 0
             extracted = extractTitleAndText response.data
             row.title = extracted.title
-            row.short_text_excerpt = extracted.short_text_excerpt
+            row.short_text_excerpt = ensureExcerpt(extracted.short_text_excerpt)
           else if /^text\//i.test(contentType)
             text = String(response.data ? '').replace(/\s+/g, ' ').trim()
-            row.short_text_excerpt = text.slice(0, 500)
+            row.short_text_excerpt = ensureExcerpt(text.slice(0, 900))
           else
             row.errors.push "unsupported_content_type: #{contentType}"
+            row.short_text_excerpt = ensureExcerpt(row.short_text_excerpt)
         catch err
           row.fetched_at = new Date().toISOString()
           row.errors.push String(err?.message ? err)
+          row.short_text_excerpt = ensureExcerpt(row.short_text_excerpt)
 
         results.push row
 

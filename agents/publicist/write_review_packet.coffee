@@ -29,14 +29,17 @@ resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
     sourceMaterialKey = 'source_material'
     audienceSuggestionsKey = 'audience_suggestions'
     audienceProfilesKey = 'audience_profiles'
-    contactLedgerKey = 'contact_ledger'
+    contactLedgerKey = 'contact_ledger_enriched'
     messageDraftsKey = 'message_drafts'
     reviewDecisionsKey = 'review_decisions'
+    outreachLogKey = 'outreach_log'
     sqliteLoadReportKey = 'sqlite_load_report'
     nextActionsKey = 'next_actions'
     researchRequestsKey = 'research_requests'
     researchResultsKey = 'research_results'
     targetCandidatesKey = 'target_candidates'
+    qualifiedTargetsKey = 'qualified_targets'
+    contactPageResultsKey = 'contact_page_results'
     enrichedDraftsKey = 'enriched_drafts'
     sqliteInsightsTarget = experiment.artifacts?.sqlite_insights?.target
     sourceMaterial = await L.need sourceMaterialKey
@@ -45,11 +48,14 @@ resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
     contactLedger = await L.need contactLedgerKey
     messageDrafts = await L.need messageDraftsKey
     reviewDecisions = await L.need reviewDecisionsKey
+    outreachLog = await L.need outreachLogKey
     sqliteLoadReport = await L.need sqliteLoadReportKey
     nextActions = await L.need nextActionsKey
     researchRequests = await L.need researchRequestsKey
     researchResults = await L.need researchResultsKey
     targetCandidates = await L.need targetCandidatesKey
+    qualifiedTargets = await L.need qualifiedTargetsKey
+    contactPageResults = await L.need contactPageResultsKey
     enrichedDrafts = await L.need enrichedDraftsKey
     sqliteInsights = if sqliteInsightsTarget? then M.theLowdown(sqliteInsightsTarget)?.value else null
     audienceSuggestions = resolveArtifactPayload(M, experiment, audienceSuggestionsKey, (value) -> Array.isArray(value?.audience_suggestions)).value ? audienceSuggestions
@@ -57,11 +63,14 @@ resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
     contactLedger = resolveArtifactPayload(M, experiment, contactLedgerKey, (value) -> Array.isArray(value?.entries)).value ? contactLedger
     messageDrafts = resolveArtifactPayload(M, experiment, messageDraftsKey, (value) -> Array.isArray(value?.drafts)).value ? messageDrafts
     reviewDecisions = resolveArtifactPayload(M, experiment, reviewDecisionsKey, (value) -> Array.isArray(value?.decisions)).value ? reviewDecisions
+    outreachLog = resolveArtifactPayload(M, experiment, outreachLogKey, (value) -> Array.isArray(value?.entries)).value ? outreachLog
     sqliteLoadReport = resolveArtifactPayload(M, experiment, sqliteLoadReportKey, (value) -> value?.summary?).value ? sqliteLoadReport
     nextActions = resolveArtifactPayload(M, experiment, nextActionsKey, (value) -> value?.summary?).value ? nextActions
     researchRequests = resolveArtifactPayload(M, experiment, researchRequestsKey, (value) -> Array.isArray(value?.research_requests)).value ? researchRequests
     researchResults = resolveArtifactPayload(M, experiment, researchResultsKey, (value) -> Array.isArray(value?.results)).value ? researchResults
     targetCandidates = resolveArtifactPayload(M, experiment, targetCandidatesKey, (value) -> value?.target_candidates?).value ? targetCandidates
+    qualifiedTargets = resolveArtifactPayload(M, experiment, qualifiedTargetsKey, (value) -> Array.isArray(value?.qualified_targets)).value ? qualifiedTargets
+    contactPageResults = resolveArtifactPayload(M, experiment, contactPageResultsKey, (value) -> Array.isArray(value?.results)).value ? contactPageResults
     enrichedDrafts = resolveArtifactPayload(M, experiment, enrichedDraftsKey, (value) -> Array.isArray(value?.enriched_drafts)).value ? enrichedDrafts
 
     throw new Error "[#{stepName}] Missing required artifact '#{sourceMaterialKey}'" unless sourceMaterial?
@@ -70,11 +79,14 @@ resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
     throw new Error "[#{stepName}] Missing required artifact '#{contactLedgerKey}'" unless contactLedger?.entries?
     throw new Error "[#{stepName}] Missing required artifact '#{messageDraftsKey}'" unless messageDrafts?.drafts?
     throw new Error "[#{stepName}] Missing required artifact '#{reviewDecisionsKey}'" unless reviewDecisions?.decisions?
+    throw new Error "[#{stepName}] Missing required artifact '#{outreachLogKey}'" unless Array.isArray(outreachLog?.entries)
     throw new Error "[#{stepName}] Missing required artifact '#{sqliteLoadReportKey}'" unless sqliteLoadReport?.summary?
     throw new Error "[#{stepName}] Missing required artifact '#{nextActionsKey}'" unless nextActions?.summary?
     throw new Error "[#{stepName}] Missing required artifact '#{researchRequestsKey}'" unless Array.isArray(researchRequests?.research_requests)
     throw new Error "[#{stepName}] Missing required artifact '#{researchResultsKey}'" unless Array.isArray(researchResults?.results)
     throw new Error "[#{stepName}] Missing required artifact '#{targetCandidatesKey}'" unless targetCandidates?.target_candidates?
+    throw new Error "[#{stepName}] Missing required artifact '#{qualifiedTargetsKey}'" unless Array.isArray(qualifiedTargets?.qualified_targets)
+    throw new Error "[#{stepName}] Missing required artifact '#{contactPageResultsKey}'" unless Array.isArray(contactPageResults?.results)
     throw new Error "[#{stepName}] Missing required artifact '#{enrichedDraftsKey}'" unless Array.isArray(enrichedDrafts?.enriched_drafts)
 
     reviewers = M.getStepParam(stepName, 'reviewers') ? []
@@ -99,6 +111,23 @@ resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
 
     ledgerLines = contactLedger.entries.map (entry) ->
       "- #{entry.audience}: #{entry.organization} / #{entry.contact_name} / #{entry.contact_role} / #{entry.contact_channel} / #{entry.status}"
+
+    qualifiedLedgerLines = contactLedger.entries
+      .filter (entry) -> String(entry?.status ? '') is 'target_qualified'
+      .map (entry) ->
+        [
+          "- #{entry.audience}: #{entry.organization} / #{entry.contact_role} / #{entry.contact_channel} / source_candidate_id=#{entry.source_candidate_id ? 'n/a'}"
+          "  contact_page_url=#{entry.contact_page_url ? 'n/a'}"
+          "  discovered_emails=#{(entry.discovered_emails ? []).join(' | ') or 'none'}"
+          "  discovered_contact_forms=#{(entry.discovered_contact_forms ? []).map((item) -> "#{item.method ? 'GET'} #{item.url ? ''}").join(' | ') or 'none'}"
+          "  discovered_social_links=#{(entry.discovered_social_links ? []).join(' | ') or 'none'}"
+          "  contact_discovery_status=#{entry.contact_discovery_status ? 'n/a'}"
+          "  contact_discovery_notes=#{entry.contact_discovery_notes ? 'n/a'}"
+        ].join("\n")
+
+    placeholderLedgerLines = contactLedger.entries
+      .filter (entry) -> String(entry?.status ? '') isnt 'target_qualified'
+      .map (entry) -> "- #{entry.audience}: #{entry.organization} / #{entry.contact_name} / #{entry.contact_role} / #{entry.contact_channel} / #{entry.status}"
 
     decisionLines = reviewDecisions.decisions.map (decision) ->
       "- #{decision.draft_id}: #{decision.contact_name} / #{decision.organization} / #{decision.decision} / approved_for_send=#{decision.approved_for_send}"
@@ -221,19 +250,82 @@ resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
       (if researchResults.skipped?.length then researchResults.skipped.map((row) -> "- #{row.request_id}: #{row.reason ? 'unknown'}").join("\n") else "- none")
     ]
 
+    groupedTargetCandidates = targetCandidates.groups_by_audience ? {}
+    if not Object.keys(groupedTargetCandidates).length and Array.isArray(targetCandidates.target_candidates)
+      for row in targetCandidates.target_candidates when row?.audience?
+        groupedTargetCandidates[row.audience] ?= []
+        groupedTargetCandidates[row.audience].push row
+
     targetCandidateLines = [
-      "- audience_group_count: #{targetCandidates.summary?.audience_group_count ? Object.keys(targetCandidates.target_candidates ? {}).length}"
-      "- raw_candidate_count: #{targetCandidates.summary?.raw_candidate_count ? targetCandidates.raw_candidates?.length ? 0}"
+      "- total_candidates: #{targetCandidates.summary?.total_candidates ? targetCandidates.target_candidates?.length ? 0}"
       "- suggestion_only: #{targetCandidates.summary?.suggestion_only is true}"
+      "- by_target_type: #{Object.entries(targetCandidates.summary?.by_target_type ? {}).map(([k, v]) -> "#{k}=#{v}").join(' | ') or 'none'}"
+      "- by_confidence: #{Object.entries(targetCandidates.summary?.by_confidence ? {}).map(([k, v]) -> "#{k}=#{v}").join(' | ') or 'none'}"
       ""
-      (if Object.keys(targetCandidates.target_candidates ? {}).length then Object.keys(targetCandidates.target_candidates).map((audienceKey) ->
-        rows = targetCandidates.target_candidates[audienceKey] ? []
+      (if Object.keys(groupedTargetCandidates).length then Object.keys(groupedTargetCandidates).sort().map((audienceKey) ->
+        rows = (groupedTargetCandidates[audienceKey] ? []).slice().sort((a, b) ->
+          confidenceRank =
+            high: 3
+            medium: 2
+            low: 1
+          (confidenceRank[b?.confidence] ? 0) - (confidenceRank[a?.confidence] ? 0)
+        ).slice(0, 5)
         [
           "### #{audienceKey}"
           ""
-          (if rows.length then rows.map((row) -> "- #{row.organization_name ? 'unknown'} / #{row.website ? 'n/a'} / #{row.confidence_score ? 'low'} / #{row.relevance_reason ? ''}").join("\n") else "- none")
+          "- candidate_count: #{groupedTargetCandidates[audienceKey]?.length ? 0}"
+          (if rows.length then rows.map((row) -> "- #{row.organization_name ? 'unknown'} / #{row.target_type ? 'unknown'} / #{row.website ? 'n/a'} / #{row.confidence ? 'low'} / #{row.relevance_reason ? ''}").join("\n") else "- none")
         ].join("\n")
       ).join("\n\n") else "- none")
+    ]
+
+    qualifiedTargetLines = [
+      "- total_qualified_targets: #{qualifiedTargets.summary?.total_qualified_targets ? qualifiedTargets.qualified_targets.length ? 0}"
+      "- by_audience: #{Object.entries(qualifiedTargets.summary?.by_audience ? {}).map(([k, v]) -> "#{k}=#{v}").join(' | ') or 'none'}"
+      ""
+      (if qualifiedTargets.qualified_targets.length then qualifiedTargets.qualified_targets.map((row) -> "- #{row.organization_name ? 'unknown'} / #{row.audience ? 'n/a'} / #{row.website ? 'n/a'} / notes=#{row.reviewer_notes ? ''}").join("\n") else "- none")
+    ]
+
+    contactPageResultLines = [
+      "- approved_url_count: #{contactPageResults.summary?.approved_url_count ? 0}"
+      "- fetched_result_count: #{contactPageResults.summary?.fetched_result_count ? 0}"
+      "- skipped_count: #{contactPageResults.summary?.skipped_count ? 0}"
+      ""
+      "### Fetched Contact Pages"
+      ""
+      (if contactPageResults.results.length then contactPageResults.results.map((row) ->
+        [
+          "- #{row.organization_name ? 'unknown'} / #{row.url}"
+          "  status_code=#{row.status_code ? 'n/a'} fetched_at=#{row.fetched_at ? 'n/a'}"
+          "  page_title=#{row.page_title ? ''}"
+          "  emails=#{(row.found_emails ? []).join(' | ') or 'none'}"
+          "  contact_forms=#{(row.found_contact_forms ? []).map((item) -> "#{item.method ? 'GET'} #{item.url ? ''}").join(' | ') or 'none'}"
+          "  social_links=#{(row.found_social_links ? []).join(' | ') or 'none'}"
+          "  excerpt=#{row.clean_text_excerpt ? ''}"
+          "  errors=#{(row.errors ? []).join(' | ') or 'none'}"
+        ].join("\n")
+      ).join("\n") else "- none")
+      ""
+      "### Skipped Contact Pages"
+      ""
+      (if contactPageResults.skipped?.length then contactPageResults.skipped.map((row) -> "- #{row.request_id ? 'unknown'} / #{row.url ? 'n/a'}: #{row.reason ? 'unknown'}").join("\n") else "- none")
+    ]
+
+    outreachLogLines = [
+      "- not_sent: #{outreachLog.summary?.not_sent ? 0}"
+      "- sent_manually: #{outreachLog.summary?.sent_manually ? 0}"
+      "- replied: #{outreachLog.summary?.replied ? 0}"
+      "- follow_up_needed: #{outreachLog.summary?.follow_up_needed ? 0}"
+      "- closed: #{outreachLog.summary?.closed ? 0}"
+      ""
+      (if outreachLog.entries.length then outreachLog.entries.map((row) ->
+        [
+          "- #{row.draft_id}: #{row.organization ? 'unknown'} / #{row.audience ? 'n/a'} / #{row.channel ? 'n/a'}"
+          "  status=#{row.status ? 'not_sent'} sent_manually_at=#{row.sent_manually_at ? 'n/a'}"
+          "  response_status=#{row.response_status ? 'none'} follow_up_date=#{row.follow_up_date ? 'n/a'}"
+          "  notes=#{row.notes ? ''}"
+        ].join("\n")
+      ).join("\n") else "- none")
     ]
 
     enrichmentLines = [
@@ -276,6 +368,14 @@ resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
         "Organization: #{draft.organization ? 'TBD'}"
         "Contact: #{draft.contact_name ? 'TBD'}#{if draft.contact_role? then " (#{draft.contact_role})" else ''}"
         "Channel: #{draft.contact_channel ? 'TBD'}"
+        "Target Website: #{draft.target_website ? 'TBD'}"
+        "Target Type: #{draft.target_type ? 'TBD'}"
+        "Target Rationale: #{draft.target_rationale ? 'TBD'}"
+        "Contact Page URL: #{draft.contact_page_url ? 'TBD'}"
+        "Discovered Contact Forms: #{(draft.discovered_contact_forms ? []).map((item) -> "#{item.method ? 'GET'} #{item.url ? ''}").join(' | ') or 'none'}"
+        "Discovered Social Links: #{(draft.discovered_social_links ? []).join(' | ') or 'none'}"
+        "Context Notes: #{(draft.context_notes ? []).join(' | ') or 'none'}"
+        "Why This Target May Care: #{(draft.why_this_target_may_care ? []).join(' | ') or 'none'}"
         ""
         "Subject: #{draft.subject}"
         ""
@@ -319,6 +419,20 @@ resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
       ""
       "## Contact Ledger"
       ""
+      "- total_entries: #{contactLedger.entries.length}"
+      "- qualified_targets: #{qualifiedLedgerLines.length}"
+      "- placeholders: #{placeholderLedgerLines.length}"
+      ""
+      "### Qualified Targets"
+      ""
+      (if qualifiedLedgerLines.length then qualifiedLedgerLines.join("\n") else "- none")
+      ""
+      "### Placeholder Targets"
+      ""
+      (if placeholderLedgerLines.length then placeholderLedgerLines.join("\n") else "- none")
+      ""
+      "### All Ledger Entries"
+      ""
       ledgerLines.join("\n")
       ""
       "## Review Decisions"
@@ -343,6 +457,10 @@ resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
       ""
       decisionLines.join("\n")
       ""
+      "## Outreach Log"
+      ""
+      outreachLogLines.join("\n")
+      ""
       "## SQLite Load Report"
       ""
       sqliteSummaryLines.join("\n")
@@ -366,6 +484,14 @@ resolveArtifactPayload = (M, experiment, artifactKey, validator) ->
       "## Target Candidates"
       ""
       targetCandidateLines.join("\n")
+      ""
+      "## Qualified Targets"
+      ""
+      qualifiedTargetLines.join("\n")
+      ""
+      "## Contact Page Results"
+      ""
+      contactPageResultLines.join("\n")
       ""
       "## Research-Enhanced Suggestions"
       ""
